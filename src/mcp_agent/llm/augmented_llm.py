@@ -26,10 +26,6 @@ from mcp_agent.core.prompt import Prompt
 from mcp_agent.core.request_params import RequestParams
 from mcp_agent.event_progress import ProgressAction
 from mcp_agent.llm.memory import Memory, SimpleMemory
-from mcp_agent.llm.sampling_format_converter import (
-    BasicFormatConverter,
-    ProviderFormatConverter,
-)
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.interfaces import (
     AugmentedLLMProtocol,
@@ -72,9 +68,6 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         instruction: str | None = None,
         name: str | None = None,
         request_params: RequestParams | None = None,
-        type_converter: Type[
-            ProviderFormatConverter[MessageParamT, MessageT]
-        ] = BasicFormatConverter,
         context: Optional["Context"] = None,
         model: Optional[str] = None,
         **kwargs: dict[str, Any],
@@ -83,14 +76,13 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         Initialize the LLM with a list of server names and an instruction.
         If a name is provided, it will be used to identify the LLM.
         If an agent is provided, all other properties are optional
-        
+
         Args:
             agent: Optional Agent that owns this LLM
             server_names: List of MCP server names to connect to
             instruction: System prompt for the LLM
             name: Optional name identifier for the LLM
             request_params: RequestParams to configure LLM behavior
-            type_converter: Provider-specific format converter class
             context: Application context
             model: Optional model name override
             **kwargs: Additional provider-specific parameters
@@ -125,7 +117,6 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
                 self.default_request_params, self._init_request_params
             )
 
-        self.type_converter = type_converter
         self.verb = kwargs.get("verb")
 
     def _initialize_default_params(self, kwargs: dict) -> RequestParams:

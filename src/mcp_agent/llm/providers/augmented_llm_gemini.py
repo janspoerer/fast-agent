@@ -7,6 +7,7 @@ from mcp_agent.core.exceptions import ProviderKeyError
 from mcp_agent.core.prompt import Prompt
 from mcp_agent.core.request_params import RequestParams
 from mcp_agent.llm.augmented_llm import AugmentedLLM
+from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.interfaces import AugmentedLLMProtocol
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 

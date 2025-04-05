@@ -56,7 +56,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         self.logger = get_logger(__name__)
 
         # Now call super().__init__
-        super().__init__(*args, type_converter=AnthropicSamplingConverter, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def _initialize_default_params(self, kwargs: dict) -> RequestParams:
         """Initialize Anthropic-specific default parameters"""
@@ -69,7 +69,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             use_history=True,
         )
 
-    def _base_url(self) -> str:
+    def _base_url(self) -> str | None:
         return self.context.config.anthropic.base_url if self.context.config.anthropic else None
 
     async def generate_internal(
@@ -357,24 +357,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             # For assistant messages: Return the last message content as text
             self.logger.debug("Last message in prompt is from assistant, returning it directly")
             return last_message
-
-    async def generate_structured(
-        self,
-        message: str,
-        response_model: Type[ModelT],
-        request_params: RequestParams | None = None,
-    ) -> ModelT:
-        # TODO -- simiar to the OAI version, we should create a tool call for the expected schema
-        response = await self.generate_str(
-            message=message,
-            request_params=request_params,
-        )
-        # Don't try to parse if we got no response
-        if not response:
-            self.logger.error("No response from generate_str")
-            return None
-
-        return response_model.model_validate(from_json(response, allow_partial=True))
 
     @classmethod
     def convert_message_to_message_param(cls, message: Message, **kwargs) -> MessageParam:
