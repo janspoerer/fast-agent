@@ -19,6 +19,7 @@ from mcp_agent.core.prompt import Prompt
         "gpt-4o-mini",  # OpenAI model
         "haiku35",  # Anthropic model
         "deepseek",
+        "gemini2",  # Google Model
     ],
 )
 async def test_basic_textual_prompting(fast_agent, model_name):
