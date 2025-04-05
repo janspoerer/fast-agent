@@ -9,6 +9,7 @@ from mcp_agent.llm.augmented_llm_passthrough import PassthroughLLM
 from mcp_agent.llm.augmented_llm_playback import PlaybackLLM
 from mcp_agent.llm.providers.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_deepseek import DeepSeekAugmentedLLM
+from mcp_agent.llm.providers.augmented_llm_gemini import GeminiAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_generic import GenericAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.mcp.interfaces import AugmentedLLMProtocol
@@ -23,6 +24,7 @@ LLMClass = Union[
     Type[PassthroughLLM],
     Type[PlaybackLLM],
     Type[DeepSeekAugmentedLLM],
+    Type[GeminiAugmentedLLM],
 ]
 
 
@@ -34,6 +36,7 @@ class Provider(Enum):
     FAST_AGENT = auto()
     DEEPSEEK = auto()
     GENERIC = auto()
+    GOOGLE = auto()
 
 
 class ReasoningEffort(Enum):
@@ -63,6 +66,7 @@ class ModelFactory:
         "fast-agent": Provider.FAST_AGENT,
         "deepseek": Provider.DEEPSEEK,
         "generic": Provider.GENERIC,
+        "google": Provider.GOOGLE,
     }
 
     # Mapping of effort strings to enum values
@@ -96,6 +100,7 @@ class ModelFactory:
         "claude-3-opus-20240229": Provider.ANTHROPIC,
         "claude-3-opus-latest": Provider.ANTHROPIC,
         "deepseek-chat": Provider.DEEPSEEK,
+        "gemini-2.0-flash": Provider.GOOGLE,
         #        "deepseek-reasoner": Provider.DEEPSEEK, reinstate on release
     }
 
@@ -111,6 +116,7 @@ class ModelFactory:
         "opus3": "claude-3-opus-latest",
         "deepseekv3": "deepseek-chat",
         "deepseek": "deepseek-chat",
+        "gemini2": "gemini-2.0-flash",
     }
 
     # Mapping of providers to their LLM classes
@@ -120,6 +126,7 @@ class ModelFactory:
         Provider.FAST_AGENT: PassthroughLLM,
         Provider.DEEPSEEK: DeepSeekAugmentedLLM,
         Provider.GENERIC: GenericAugmentedLLM,
+        Provider.GOOGLE: GeminiAugmentedLLM,
     }
 
     # Mapping of special model names to their specific LLM classes
@@ -188,24 +195,22 @@ class ModelFactory:
 
         # Create a factory function matching the updated attach_llm protocol
         def factory(
-            agent: Agent, 
-            request_params: Optional[RequestParams] = None, 
-            **kwargs
+            agent: Agent, request_params: Optional[RequestParams] = None, **kwargs
         ) -> AugmentedLLMProtocol:
             # Create base params with parsed model name
             base_params = RequestParams()
             base_params.model = config.model_name  # Use the parsed model name, not the alias
-            
+
             # Add reasoning effort if available
             if config.reasoning_effort:
                 kwargs["reasoning_effort"] = config.reasoning_effort.value
-            
+
             # Forward all arguments to LLM constructor
             llm_args = {
                 "agent": agent,
                 "model": config.model_name,
                 "request_params": request_params,
-                **kwargs
+                **kwargs,
             }
 
             llm: AugmentedLLMProtocol = llm_class(**llm_args)

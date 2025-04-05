@@ -148,6 +148,16 @@ class GenericSettings(BaseModel):
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
+class GoogleSettings(BaseModel):
+    """
+    Settings for using OpenAI models in the fast-agent application.
+    """
+
+    api_key: str | None = None
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
 class TemporalSettings(BaseModel):
     """
     Temporal settings for the fast-agent application.
@@ -263,6 +273,9 @@ class Settings(BaseSettings):
     """Settings for using DeepSeek models in the fast-agent application"""
 
     generic: GenericSettings | None = None
+    """Settings for using Generic models in the fast-agent application"""
+
+    google: GoogleSettings | None = None
     """Settings for using Generic models in the fast-agent application"""
 
     logger: LoggerSettings | None = LoggerSettings()
