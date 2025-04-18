@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         #        "generic.qwen2.5:latest",
         "generic.llama3.2:latest",
         "openrouter.google/gemini-2.0-flash-001",
+        "google.gemini-2.0-flash",
     ],
 )
 async def test_basic_textual_prompting(fast_agent, model_name):
@@ -260,6 +261,7 @@ async def test_generic_model_textual_prompting(fast_agent, model_name):
         "gpt-4.1",
         "gpt-4.1-nano",
         "gpt-4.1-mini",
+        "google.gemini-2.0-flash",
     ],
 )
 async def test_basic_tool_calling(fast_agent, model_name):

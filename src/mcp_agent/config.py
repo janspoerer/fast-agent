@@ -139,6 +139,19 @@ class DeepSeekSettings(BaseModel):
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
+class GoogleSettings(BaseModel):
+    """
+    Settings for using OpenAI models in the fast-agent application.
+    """
+
+    api_key: str | None = None
+    # reasoning_effort: Literal["low", "medium", "high"] = "medium"
+
+    base_url: str | None = None
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
 class GenericSettings(BaseModel):
     """
     Settings for using OpenAI models in the fast-agent application.
@@ -262,6 +275,9 @@ class Settings(BaseSettings):
     """Settings for using OpenAI models in the fast-agent application"""
 
     deepseek: DeepSeekSettings | None = None
+    """Settings for using DeepSeek models in the fast-agent application"""
+
+    google: GoogleSettings | None = None
     """Settings for using DeepSeek models in the fast-agent application"""
 
     openrouter: OpenRouterSettings | None = None

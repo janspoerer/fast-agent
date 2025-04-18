@@ -11,6 +11,7 @@ class Provider(Enum):
     ANTHROPIC = "anthropic"
     OPENAI = "openai"
     FAST_AGENT = "fast-agent"
+    GOOGLE = "google"
     DEEPSEEK = "deepseek"
     GENERIC = "generic"
     OPENROUTER = "openrouter"
