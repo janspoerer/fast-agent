@@ -6,10 +6,11 @@ directly creates Agent instances without proxies.
 
 import argparse
 import asyncio
+from pathlib import Path
 import sys
 from contextlib import asynccontextmanager
 from importlib.metadata import version as get_version
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, TypeVar
 
 import yaml
 
@@ -54,6 +55,8 @@ from mcp_agent.core.validation import (
     validate_workflow_references,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
+from mcp_agent.mcp.prompts.prompt_load import load_prompt_multipart
 
 if TYPE_CHECKING:
     from mcp_agent.agents.agent import Agent
@@ -90,12 +93,16 @@ class FastAgent:
         )
         parser.add_argument(
             "--agent",
+            default="default",
             help="Specify the agent to send a message to (used with --message)",
         )
         parser.add_argument(
             "-m",
             "--message",
-            help="Message to send to the specified agent (requires --agent)",
+            help="Message to send to the specified agent",
+        )
+        parser.add_argument(
+            "-p", "--prompt-file", help="Path to a prompt file to use (either text or JSON)"
         )
         parser.add_argument(
             "--quiet",
@@ -294,8 +301,8 @@ class FastAgent:
                     # Exit after server shutdown
                     raise SystemExit(0)
 
-                # Handle direct message sending if --agent and --message are provided
-                if hasattr(self, "args") and self.args.agent and self.args.message:
+                # Handle direct message sending if  --message is provided
+                if self.args.message:
                     agent_name = self.args.agent
                     message = self.args.message
 
@@ -315,6 +322,33 @@ class FastAgent:
                         # The chat display should already be turned off by the configuration
                         if self.args.quiet:
                             print(f"{response}")
+
+                        raise SystemExit(0)
+                    except Exception as e:
+                        print(f"\n\nError sending message to agent '{agent_name}': {str(e)}")
+                        raise SystemExit(1)
+
+                if self.args.prompt_file:
+                    agent_name = self.args.agent
+                    prompt: List[PromptMessageMultipart] = load_prompt_multipart(
+                        Path(self.args.prompt_file)
+                    )
+                    if agent_name not in active_agents:
+                        available_agents = ", ".join(active_agents.keys())
+                        print(
+                            f"\n\nError: Agent '{agent_name}' not found. Available agents: {available_agents}"
+                        )
+                        raise SystemExit(1)
+
+                    try:
+                        # Get response from the agent
+                        agent = active_agents[agent_name]
+                        response = await agent.generate(prompt)
+
+                        # In quiet mode, just print the raw response
+                        # The chat display should already be turned off by the configuration
+                        if self.args.quiet:
+                            print(f"{response.last_text()}")
 
                         raise SystemExit(0)
                     except Exception as e:
