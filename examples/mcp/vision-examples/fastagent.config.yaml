@@ -38,3 +38,10 @@ mcp:
         filesystem:
             command: "npx"
             args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+        webcam: 
+            command: "npx"
+            args: ["-y","@llmindset/mcp-webcam"]
+        hfspace:
+            command: "npx"
+            args: ["-y","@llmindset/mcp-hfspace"]
+
