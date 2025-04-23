@@ -6,10 +6,10 @@ directly creates Agent instances without proxies.
 
 import argparse
 import asyncio
-from pathlib import Path
 import sys
 from contextlib import asynccontextmanager
 from importlib.metadata import version as get_version
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, TypeVar
 
 import yaml
@@ -55,11 +55,11 @@ from mcp_agent.core.validation import (
     validate_workflow_references,
 )
 from mcp_agent.logging.logger import get_logger
-from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.mcp.prompts.prompt_load import load_prompt_multipart
 
 if TYPE_CHECKING:
     from mcp_agent.agents.agent import Agent
+    from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 
 F = TypeVar("F", bound=Callable[..., Any])  # For decorated functions
 logger = get_logger(__name__)

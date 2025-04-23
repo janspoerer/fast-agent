@@ -2,8 +2,10 @@
 
 import asyncio
 import sys
+from typing import List, Optional
+
 import typer
-from typing import Optional, List
+
 from mcp_agent.core.fastagent import FastAgent
 
 app = typer.Typer(
