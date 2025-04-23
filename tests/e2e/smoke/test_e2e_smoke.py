@@ -28,7 +28,6 @@ if TYPE_CHECKING:
         "generic.llama3.2:latest",
         "openrouter.google/gemini-2.0-flash-001",
         "google.gemini-2.0-flash",
-        "google.gemini-2.0-flash",
     ],
 )
 async def test_basic_textual_prompting(fast_agent, model_name):

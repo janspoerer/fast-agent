@@ -347,10 +347,11 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
     ) -> Tuple[ModelT | None, PromptMessageMultipart]:  # noqa: F821
         request_params = self.get_request_params(request_params)
 
+        # TODO - convert this to use Tool Calling convention for Anthropic Structured outputs
         multipart_messages[-1].add_text(
             """YOU MUST RESPOND IN THE FOLLOWING FORMAT:
             {schema}
-            RESPOND ONLY WITH THE JSON, NO PREAMBLE OR CODE FENCES """.format(
+            RESPOND ONLY WITH THE JSON, NO PREAMBLE, CODE FENCES OR 'properties' ARE PERMISSABLE """.format(
                 schema=model.model_json_schema()
             )
         )
