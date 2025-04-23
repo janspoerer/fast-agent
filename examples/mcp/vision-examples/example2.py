@@ -13,7 +13,6 @@ fast = FastAgent("fast-agent example")
 async def main():
     # use the --model command line switch or agent arguments to change model
     async with fast.run() as agent:
-        await agent.default.generate([Prompt.user(Path("instructions.jpg"))])
         await agent.interactive()
 
 
