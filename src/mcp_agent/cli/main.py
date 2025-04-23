@@ -39,14 +39,14 @@ def show_welcome() -> None:
     table.add_column("Command", style="green")
     table.add_column("Description")
 
-    table.add_row("setup", "Create a new agent and configuration files")
+    table.add_row("setup", "Create a new agent template and configuration files")
     table.add_row("check", "Show or diagnose fast-agent configuration")
     table.add_row("quickstart", "Create example applications (workflow, researcher, etc.)")
 
     console.print(table)
 
     console.print(
-        "\n[italic]get started with:[/italic] [cyan]fast-agent[/cyan] [green]setup[/green]"
+        "\n[italic]get started with:[/italic] [bold][cyan]fast-agent[/cyan][/bold] [green]setup[/green]"
     )
 
 
