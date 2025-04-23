@@ -1,8 +1,6 @@
 import asyncio
-from pathlib import Path
 
 from mcp_agent.core.fastagent import FastAgent
-from mcp_agent.core.prompt import Prompt
 
 # Create the application
 fast = FastAgent("fast-agent example")
