@@ -10,7 +10,7 @@
 ## Overview
 
 > [!TIP]
-> Documentation site is in production here : https://fast-agent.ai. Feel free to feed back what's helpful and what's not. llms.txt link is here: https://fast-agent.ai/llms.txt
+> Documentation site is in production here : https://fast-agent.ai. Feel free to feed back what's helpful and what's not. There is also an LLMs.txt [here](https://fast-agent.ai/llms.txt)
 
 **`fast-agent`** enables you to create and interact with sophisticated Agents and Workflows in minutes. It is the first framework with complete, end-to-end tested MCP Feature support including Sampling. Both Anthropic (Haiku, Sonnet, Opus) and OpenAI models (gpt-4o/gpt-4.1 family, o1/o3 family) are supported.
 
@@ -18,8 +18,8 @@ The simple declarative syntax lets you concentrate on composing your Prompts and
 
 `fast-agent` is multi-modal, supporting Images and PDFs for both Anthropic and OpenAI endpoints via Prompts, Resources and MCP Tool Call results. The inclusion of passthrough and playback LLMs enable rapid development and test of Python glue-code for your applications.
 
-> [!TIP]
-> `fast-agent` is now MCP Native! Coming Soon - Full Documentation Site and Further MCP Examples.
+> [!IMPORTANT]
+> `fast-agent` The fast-agent documentation repo is here: https://github.com/evalstate/fast-agent-docs. Please feel free to submit PRs for documentation, experience reports or other content you think others may find helpful. All help and feedback warmly received.
 
 ### Agent Application Development
 
