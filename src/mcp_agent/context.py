@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any, Optional, Union
 from mcp import ServerSession
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -66,10 +68,6 @@ async def configure_otel(config: "Settings") -> None:
     if not config.otel.enabled:
         return
 
-    # Check if a provider is already set to avoid re-initialization
-    if trace.get_tracer_provider().__class__.__name__ != "NoOpTracerProvider":
-        return
-
     # Set up global textmap propagator first
     set_global_textmap(TraceContextTextMapPropagator())
 
@@ -107,6 +105,8 @@ async def configure_otel(config: "Settings") -> None:
 
     # Set as global tracer provider
     trace.set_tracer_provider(tracer_provider)
+    HTTPXClientInstrumentor().instrument()
+    AnthropicInstrumentor().instrument()
 
 
 async def configure_logger(config: "Settings") -> None:
