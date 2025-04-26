@@ -32,6 +32,7 @@ dependencies = [
     "aiohttp>=3.11.13",
     "a2a-types>=0.1.0",
     "opentelemetry-instrumentation-httpx>=0.53b1",
+    "opentelemetry-instrumentation-openai>=0.39.3",
 ]
 
 [project.optional-dependencies]

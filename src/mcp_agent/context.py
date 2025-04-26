@@ -10,7 +10,7 @@ from mcp import ServerSession
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.instrumentation.openai import OpenAIInstrumentor
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -65,7 +65,7 @@ async def configure_otel(config: "Settings") -> None:
     """
     Configure OpenTelemetry based on the application config.
     """
-    if not config.otel.enabled:
+    if not config.otel or not config.otel.enabled:
         return
 
     # Set up global textmap propagator first
@@ -105,8 +105,8 @@ async def configure_otel(config: "Settings") -> None:
 
     # Set as global tracer provider
     trace.set_tracer_provider(tracer_provider)
-    HTTPXClientInstrumentor().instrument()
     AnthropicInstrumentor().instrument()
+    OpenAIInstrumentor().instrument()
 
 
 async def configure_logger(config: "Settings") -> None:
