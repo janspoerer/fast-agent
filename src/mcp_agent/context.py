@@ -72,8 +72,12 @@ async def configure_otel(config: "Settings") -> None:
     set_global_textmap(TraceContextTextMapPropagator())
 
     service_name = config.otel.service_name
-    service_instance_id = config.otel.service_instance_id
-    service_version = config.otel.service_version
+    from importlib.metadata import version
+
+    try:
+        app_version = version("fast-agent-mcp")
+    except:  # noqa: E722
+        app_version = "unknown"
 
     # Create resource identifying this service
     resource = Resource.create(
@@ -81,8 +85,7 @@ async def configure_otel(config: "Settings") -> None:
             key: value
             for key, value in {
                 "service.name": service_name,
-                "service.instance.id": service_instance_id,
-                "service.version": service_version,
+                "service.version": app_version,
             }.items()
             if value is not None
         }

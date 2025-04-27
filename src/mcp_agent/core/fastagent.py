@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, TypeVar
 
 import yaml
+from opentelemetry import trace
 
 from mcp_agent import config
 from mcp_agent.app import MCPApp
@@ -55,7 +56,6 @@ from mcp_agent.core.validation import (
     validate_workflow_references,
 )
 from mcp_agent.logging.logger import get_logger
-from mcp_agent.logging.tracing import telemetry
 from mcp_agent.mcp.prompts.prompt_load import load_prompt_multipart
 
 if TYPE_CHECKING:
@@ -212,13 +212,11 @@ class FastAgent:
     evaluator_optimizer = evaluator_optimizer_decorator
 
     @asynccontextmanager
-    @telemetry.traced("fastagent.run")
     async def run(self):
         """
         Context manager for running the application.
         Initializes all registered agents.
         """
-
         active_agents: Dict[str, Agent] = {}
         had_error = False
         await self.app.initialize()
@@ -229,163 +227,167 @@ class FastAgent:
         # Handle quiet mode
         quiet_mode = hasattr(self, "args") and self.args.quiet
 
-        try:
-            async with self.app.run():
-                # Apply quiet mode if requested
-                if (
-                    quiet_mode
-                    and hasattr(self.app.context, "config")
-                    and hasattr(self.app.context.config, "logger")
-                ):
-                    # Update our app's config directly
-                    self.app.context.config.logger.progress_display = False
-                    self.app.context.config.logger.show_chat = False
-                    self.app.context.config.logger.show_tools = False
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span(self.name):
+            try:
+                async with self.app.run():
+                    # Apply quiet mode if requested
+                    if (
+                        quiet_mode
+                        and hasattr(self.app.context, "config")
+                        and hasattr(self.app.context.config, "logger")
+                    ):
+                        # Update our app's config directly
+                        self.app.context.config.logger.progress_display = False
+                        self.app.context.config.logger.show_chat = False
+                        self.app.context.config.logger.show_tools = False
 
-                    # Directly disable the progress display singleton
-                    from mcp_agent.progress_display import progress_display
+                        # Directly disable the progress display singleton
+                        from mcp_agent.progress_display import progress_display
 
-                    progress_display.stop()
+                        progress_display.stop()
 
-                # Pre-flight validation
-                if 0 == len(self.agents):
-                    raise AgentConfigError("No agents defined. Please define at least one agent.")
-                validate_server_references(self.context, self.agents)
-                validate_workflow_references(self.agents)
+                    # Pre-flight validation
+                    if 0 == len(self.agents):
+                        raise AgentConfigError(
+                            "No agents defined. Please define at least one agent."
+                        )
+                    validate_server_references(self.context, self.agents)
+                    validate_workflow_references(self.agents)
 
-                # Get a model factory function
-                def model_factory_func(model=None, request_params=None):
-                    return get_model_factory(
-                        self.context,
-                        model=model,
-                        request_params=request_params,
-                        cli_model=self.args.model if hasattr(self, "args") else None,
+                    # Get a model factory function
+                    def model_factory_func(model=None, request_params=None):
+                        return get_model_factory(
+                            self.context,
+                            model=model,
+                            request_params=request_params,
+                            cli_model=self.args.model if hasattr(self, "args") else None,
+                        )
+
+                    # Create all agents in dependency order
+                    active_agents = await create_agents_in_dependency_order(
+                        self.app,
+                        self.agents,
+                        model_factory_func,
                     )
 
-                # Create all agents in dependency order
-                active_agents = await create_agents_in_dependency_order(
-                    self.app,
-                    self.agents,
-                    model_factory_func,
-                )
+                    # Create a wrapper with all agents for simplified access
+                    wrapper = AgentApp(active_agents)
 
-                # Create a wrapper with all agents for simplified access
-                wrapper = AgentApp(active_agents)
+                    # Handle command line options that should be processed after agent initialization
 
-                # Handle command line options that should be processed after agent initialization
+                    # Handle --server option
+                    if hasattr(self, "args") and self.args.server:
+                        try:
+                            # Print info message if not in quiet mode
+                            if not quiet_mode:
+                                print(f"Starting FastAgent '{self.name}' in server mode")
+                                print(f"Transport: {self.args.transport}")
+                                if self.args.transport == "sse":
+                                    print(f"Listening on {self.args.host}:{self.args.port}")
+                                print("Press Ctrl+C to stop")
 
-                # Handle --server option
-                if hasattr(self, "args") and self.args.server:
-                    try:
-                        # Print info message if not in quiet mode
-                        if not quiet_mode:
-                            print(f"Starting FastAgent '{self.name}' in server mode")
-                            print(f"Transport: {self.args.transport}")
-                            if self.args.transport == "sse":
-                                print(f"Listening on {self.args.host}:{self.args.port}")
-                            print("Press Ctrl+C to stop")
+                            # Create the MCP server
+                            from mcp_agent.mcp_server import AgentMCPServer
 
-                        # Create the MCP server
-                        from mcp_agent.mcp_server import AgentMCPServer
+                            mcp_server = AgentMCPServer(
+                                agent_app=wrapper,
+                                server_name=f"{self.name}-MCP-Server",
+                            )
 
-                        mcp_server = AgentMCPServer(
-                            agent_app=wrapper,
-                            server_name=f"{self.name}-MCP-Server",
-                        )
+                            # Run the server directly (this is a blocking call)
+                            await mcp_server.run_async(
+                                transport=self.args.transport,
+                                host=self.args.host,
+                                port=self.args.port,
+                            )
+                        except KeyboardInterrupt:
+                            if not quiet_mode:
+                                print("\nServer stopped by user (Ctrl+C)")
+                        except Exception as e:
+                            if not quiet_mode:
+                                print(f"\nServer stopped with error: {e}")
 
-                        # Run the server directly (this is a blocking call)
-                        await mcp_server.run_async(
-                            transport=self.args.transport,
-                            host=self.args.host,
-                            port=self.args.port,
-                        )
-                    except KeyboardInterrupt:
-                        if not quiet_mode:
-                            print("\nServer stopped by user (Ctrl+C)")
-                    except Exception as e:
-                        if not quiet_mode:
-                            print(f"\nServer stopped with error: {e}")
-
-                    # Exit after server shutdown
-                    raise SystemExit(0)
-
-                # Handle direct message sending if  --message is provided
-                if self.args.message:
-                    agent_name = self.args.agent
-                    message = self.args.message
-
-                    if agent_name not in active_agents:
-                        available_agents = ", ".join(active_agents.keys())
-                        print(
-                            f"\n\nError: Agent '{agent_name}' not found. Available agents: {available_agents}"
-                        )
-                        raise SystemExit(1)
-
-                    try:
-                        # Get response from the agent
-                        agent = active_agents[agent_name]
-                        response = await agent.send(message)
-
-                        # In quiet mode, just print the raw response
-                        # The chat display should already be turned off by the configuration
-                        if self.args.quiet:
-                            print(f"{response}")
-
+                        # Exit after server shutdown
                         raise SystemExit(0)
-                    except Exception as e:
-                        print(f"\n\nError sending message to agent '{agent_name}': {str(e)}")
-                        raise SystemExit(1)
 
-                if self.args.prompt_file:
-                    agent_name = self.args.agent
-                    prompt: List[PromptMessageMultipart] = load_prompt_multipart(
-                        Path(self.args.prompt_file)
-                    )
-                    if agent_name not in active_agents:
-                        available_agents = ", ".join(active_agents.keys())
-                        print(
-                            f"\n\nError: Agent '{agent_name}' not found. Available agents: {available_agents}"
+                    # Handle direct message sending if  --message is provided
+                    if self.args.message:
+                        agent_name = self.args.agent
+                        message = self.args.message
+
+                        if agent_name not in active_agents:
+                            available_agents = ", ".join(active_agents.keys())
+                            print(
+                                f"\n\nError: Agent '{agent_name}' not found. Available agents: {available_agents}"
+                            )
+                            raise SystemExit(1)
+
+                        try:
+                            # Get response from the agent
+                            agent = active_agents[agent_name]
+                            response = await agent.send(message)
+
+                            # In quiet mode, just print the raw response
+                            # The chat display should already be turned off by the configuration
+                            if self.args.quiet:
+                                print(f"{response}")
+
+                            raise SystemExit(0)
+                        except Exception as e:
+                            print(f"\n\nError sending message to agent '{agent_name}': {str(e)}")
+                            raise SystemExit(1)
+
+                    if self.args.prompt_file:
+                        agent_name = self.args.agent
+                        prompt: List[PromptMessageMultipart] = load_prompt_multipart(
+                            Path(self.args.prompt_file)
                         )
-                        raise SystemExit(1)
+                        if agent_name not in active_agents:
+                            available_agents = ", ".join(active_agents.keys())
+                            print(
+                                f"\n\nError: Agent '{agent_name}' not found. Available agents: {available_agents}"
+                            )
+                            raise SystemExit(1)
 
-                    try:
-                        # Get response from the agent
-                        agent = active_agents[agent_name]
-                        response = await agent.generate(prompt)
+                        try:
+                            # Get response from the agent
+                            agent = active_agents[agent_name]
+                            response = await agent.generate(prompt)
 
-                        # In quiet mode, just print the raw response
-                        # The chat display should already be turned off by the configuration
-                        if self.args.quiet:
-                            print(f"{response.last_text()}")
+                            # In quiet mode, just print the raw response
+                            # The chat display should already be turned off by the configuration
+                            if self.args.quiet:
+                                print(f"{response.last_text()}")
 
-                        raise SystemExit(0)
-                    except Exception as e:
-                        print(f"\n\nError sending message to agent '{agent_name}': {str(e)}")
-                        raise SystemExit(1)
+                            raise SystemExit(0)
+                        except Exception as e:
+                            print(f"\n\nError sending message to agent '{agent_name}': {str(e)}")
+                            raise SystemExit(1)
 
-                yield wrapper
+                    yield wrapper
 
-        except (
-            ServerConfigError,
-            ProviderKeyError,
-            AgentConfigError,
-            ServerInitializationError,
-            ModelConfigError,
-            CircularDependencyError,
-            PromptExitError,
-        ) as e:
-            had_error = True
-            self._handle_error(e)
-            raise SystemExit(1)
+            except (
+                ServerConfigError,
+                ProviderKeyError,
+                AgentConfigError,
+                ServerInitializationError,
+                ModelConfigError,
+                CircularDependencyError,
+                PromptExitError,
+            ) as e:
+                had_error = True
+                self._handle_error(e)
+                raise SystemExit(1)
 
-        finally:
-            # Clean up any active agents
-            if active_agents and not had_error:
-                for agent in active_agents.values():
-                    try:
-                        await agent.shutdown()
-                    except Exception:
-                        pass
+            finally:
+                # Clean up any active agents
+                if active_agents and not had_error:
+                    for agent in active_agents.values():
+                        try:
+                            await agent.shutdown()
+                        except Exception:
+                            pass
 
     def _handle_error(self, e: Exception, error_type: Optional[str] = None) -> None:
         """

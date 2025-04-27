@@ -1,7 +1,6 @@
 import asyncio
 from typing import Annotated
 
-from opentelemetry import trace
 from pydantic import BaseModel, Field
 
 from mcp_agent.core.fastagent import FastAgent
@@ -29,14 +28,9 @@ class FormattedResponse(BaseModel):
 async def main():
     # use the --model command line switch or agent arguments to change model
     async with fast.run() as agent:
-        tracer = trace.get_tracer(__name__)
-        with tracer.start_as_current_span("outer"):
-            with tracer.start_span("span"):
-                with tracer.start_as_current_span("current_span"):
-                    thinking, response = await agent.chat.structured(
-                        multipart_messages=[Prompt.user("Let's talk about guitars.")],
-                        model=FormattedResponse,
-                    )
+        thinking, response = await agent.chat.generate(
+            multipart_messages=[Prompt.user("Let's talk about guitars. Fetch from wikipedia")],
+        )
 
 
 if __name__ == "__main__":
