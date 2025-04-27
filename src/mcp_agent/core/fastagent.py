@@ -305,20 +305,20 @@ class FastAgent:
                                     print(f"Listening on {self.args.host}:{self.args.port}")
                                 print("Press Ctrl+C to stop")
 
-                                # Create the MCP server
-                                from mcp_agent.mcp_server import AgentMCPServer
+                            # Create the MCP server
+                            from mcp_agent.mcp_server import AgentMCPServer
 
-                                mcp_server = AgentMCPServer(
-                                    agent_app=wrapper,
-                                    server_name=f"{self.name}-MCP-Server",
-                                )
+                            mcp_server = AgentMCPServer(
+                                agent_app=wrapper,
+                                server_name=f"{self.name}-MCP-Server",
+                            )
 
-                                # Run the server directly (this is a blocking call)
-                                await mcp_server.run_async(
-                                    transport=self.args.transport,
-                                    host=self.args.host,
-                                    port=self.args.port,
-                                )
+                            # Run the server directly (this is a blocking call)
+                            await mcp_server.run_async(
+                                transport=self.args.transport,
+                                host=self.args.host,
+                                port=self.args.port,
+                            )
                         except KeyboardInterrupt:
                             if not quiet_mode:
                                 print("\nServer stopped by user (Ctrl+C)")

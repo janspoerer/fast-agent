@@ -181,7 +181,7 @@ class OpenTelemetrySettings(BaseModel):
     OTEL settings for the fast-agent application.
     """
 
-    enabled: bool = True
+    enabled: bool = False
 
     service_name: str = "fast-agent"
 
