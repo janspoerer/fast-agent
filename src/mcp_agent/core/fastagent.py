@@ -77,81 +77,97 @@ class FastAgent:
         name: str,
         config_path: str | None = None,
         ignore_unknown_args: bool = False,
+        parse_cli_args: bool = True,  # Add new parameter with default True
     ) -> None:
         """
-        Initialize the DirectFastAgent application.
+        Initialize the fast-agent application.
 
         Args:
             name: Name of the application
             config_path: Optional path to config file
             ignore_unknown_args: Whether to ignore unknown command line arguments
+                                 when parse_cli_args is True.
+            parse_cli_args: If True, parse command line arguments using argparse.
+                            Set to False when embedding FastAgent in another framework
+                            (like FastAPI/Uvicorn) that handles its own arguments.
         """
-        # Setup command line argument parsing
-        parser = argparse.ArgumentParser(description="DirectFastAgent Application")
-        parser.add_argument(
-            "--model",
-            help="Override the default model for all agents",
-        )
-        parser.add_argument(
-            "--agent",
-            default="default",
-            help="Specify the agent to send a message to (used with --message)",
-        )
-        parser.add_argument(
-            "-m",
-            "--message",
-            help="Message to send to the specified agent",
-        )
-        parser.add_argument(
-            "-p", "--prompt-file", help="Path to a prompt file to use (either text or JSON)"
-        )
-        parser.add_argument(
-            "--quiet",
-            action="store_true",
-            help="Disable progress display, tool and message logging for cleaner output",
-        )
-        parser.add_argument(
-            "--version",
-            action="store_true",
-            help="Show version and exit",
-        )
-        parser.add_argument(
-            "--server",
-            action="store_true",
-            help="Run as an MCP server",
-        )
-        parser.add_argument(
-            "--transport",
-            choices=["sse", "stdio"],
-            default="sse",
-            help="Transport protocol to use when running as a server (sse or stdio)",
-        )
-        parser.add_argument(
-            "--port",
-            type=int,
-            default=8000,
-            help="Port to use when running as a server with SSE transport",
-        )
-        parser.add_argument(
-            "--host",
-            default="0.0.0.0",
-            help="Host address to bind to when running as a server with SSE transport",
-        )
+        self.args = argparse.Namespace()  # Initialize args always
 
-        if ignore_unknown_args:
-            known_args, _ = parser.parse_known_args()
-            self.args = known_args
-        else:
-            self.args = parser.parse_args()
+        # --- Wrap argument parsing logic ---
+        if parse_cli_args:
+            # Setup command line argument parsing
+            parser = argparse.ArgumentParser(description="DirectFastAgent Application")
+            parser.add_argument(
+                "--model",
+                help="Override the default model for all agents",
+            )
+            parser.add_argument(
+                "--agent",
+                default="default",
+                help="Specify the agent to send a message to (used with --message)",
+            )
+            parser.add_argument(
+                "-m",
+                "--message",
+                help="Message to send to the specified agent",
+            )
+            parser.add_argument(
+                "-p", "--prompt-file", help="Path to a prompt file to use (either text or JSON)"
+            )
+            parser.add_argument(
+                "--quiet",
+                action="store_true",
+                help="Disable progress display, tool and message logging for cleaner output",
+            )
+            parser.add_argument(
+                "--version",
+                action="store_true",
+                help="Show version and exit",
+            )
+            parser.add_argument(
+                "--server",
+                action="store_true",
+                help="Run as an MCP server",
+            )
+            parser.add_argument(
+                "--transport",
+                choices=["sse", "stdio"],
+                default="sse",
+                help="Transport protocol to use when running as a server (sse or stdio)",
+            )
+            parser.add_argument(
+                "--port",
+                type=int,
+                default=8000,
+                help="Port to use when running as a server with SSE transport",
+            )
+            parser.add_argument(
+                "--host",
+                default="0.0.0.0",
+                help="Host address to bind to when running as a server with SSE transport",
+            )
 
-        # Handle version flag
-        if self.args.version:
-            try:
-                app_version = get_version("fast-agent-mcp")
-            except:  # noqa: E722
-                app_version = "unknown"
-            print(f"fast-agent-mcp v{app_version}")
-            sys.exit(0)
+            if ignore_unknown_args:
+                known_args, _ = parser.parse_known_args()
+                self.args = known_args
+            else:
+                # Use parse_known_args here too, to avoid crashing on uvicorn args etc.
+                # even if ignore_unknown_args is False, we only care about *our* args.
+                known_args, unknown = parser.parse_known_args()
+                self.args = known_args
+                # Optionally, warn about unknown args if not ignoring?
+                # if unknown and not ignore_unknown_args:
+                #     logger.warning(f"Ignoring unknown command line arguments: {unknown}")
+
+            # Handle version flag
+            if self.args.version:
+                try:
+                    app_version = get_version("fast-agent-mcp")
+                except:  # noqa: E722
+                    app_version = "unknown"
+                print(f"fast-agent-mcp v{app_version}")
+                sys.exit(0)
+        # --- End of wrapped logic ---
 
         self.name = name
         self.config_path = config_path
@@ -220,13 +236,13 @@ class FastAgent:
         active_agents: Dict[str, Agent] = {}
         had_error = False
         await self.app.initialize()
-        active_agents: Dict[str, Agent] = {}
-        had_error = False
-        await self.app.initialize()
 
-        # Handle quiet mode
-        quiet_mode = hasattr(self, "args") and self.args.quiet
-
+        # Handle quiet mode and CLI model override safely
+        # Define these *before* they are used, checking if self.args exists and has the attributes
+        quiet_mode = hasattr(self.args, "quiet") and self.args.quiet
+        cli_model_override = (
+            self.args.model if hasattr(self.args, "model") and self.args.model else None
+        )  # Define cli_model_override here
         tracer = trace.get_tracer(__name__)
         with tracer.start_as_current_span(self.name):
             try:
@@ -247,125 +263,131 @@ class FastAgent:
 
                         progress_display.stop()
 
-                    # Pre-flight validation
-                    if 0 == len(self.agents):
-                        raise AgentConfigError(
-                            "No agents defined. Please define at least one agent."
+                        # Pre-flight validation
+                        if 0 == len(self.agents):
+                            raise AgentConfigError(
+                                "No agents defined. Please define at least one agent."
+                            )
+                        validate_server_references(self.context, self.agents)
+                        validate_workflow_references(self.agents)
+
+                        # Get a model factory function
+                        # Now cli_model_override is guaranteed to be defined
+                        def model_factory_func(model=None, request_params=None):
+                            return get_model_factory(
+                                self.context,
+                                model=model,
+                                request_params=request_params,
+                                cli_model=cli_model_override,  # Use the variable defined above
+                            )
+
+                        # Create all agents in dependency order
+                        active_agents = await create_agents_in_dependency_order(
+                            self.app,
+                            self.agents,
+                            model_factory_func,
                         )
-                    validate_server_references(self.context, self.agents)
-                    validate_workflow_references(self.agents)
 
-                    # Get a model factory function
-                    def model_factory_func(model=None, request_params=None):
-                        return get_model_factory(
-                            self.context,
-                            model=model,
-                            request_params=request_params,
-                            cli_model=self.args.model if hasattr(self, "args") else None,
-                        )
+                        # Create a wrapper with all agents for simplified access
+                        wrapper = AgentApp(active_agents)
 
-                    # Create all agents in dependency order
-                    active_agents = await create_agents_in_dependency_order(
-                        self.app,
-                        self.agents,
-                        model_factory_func,
-                    )
+                        # Handle command line options that should be processed after agent initialization
 
-                    # Create a wrapper with all agents for simplified access
-                    wrapper = AgentApp(active_agents)
+                        # Handle --server option
+                        # Check if parse_cli_args was True before checking self.args.server
+                        if hasattr(self.args, "server") and self.args.server:
+                            try:
+                                # Print info message if not in quiet mode
+                                if not quiet_mode:
+                                    print(f"Starting FastAgent '{self.name}' in server mode")
+                                    print(f"Transport: {self.args.transport}")
+                                    if self.args.transport == "sse":
+                                        print(f"Listening on {self.args.host}:{self.args.port}")
+                                    print("Press Ctrl+C to stop")
 
-                    # Handle command line options that should be processed after agent initialization
+                                    # Create the MCP server
+                                    from mcp_agent.mcp_server import AgentMCPServer
 
-                    # Handle --server option
-                    if hasattr(self, "args") and self.args.server:
-                        try:
-                            # Print info message if not in quiet mode
-                            if not quiet_mode:
-                                print(f"Starting FastAgent '{self.name}' in server mode")
-                                print(f"Transport: {self.args.transport}")
-                                if self.args.transport == "sse":
-                                    print(f"Listening on {self.args.host}:{self.args.port}")
-                                print("Press Ctrl+C to stop")
+                                    mcp_server = AgentMCPServer(
+                                        agent_app=wrapper,
+                                        server_name=f"{self.name}-MCP-Server",
+                                    )
 
-                            # Create the MCP server
-                            from mcp_agent.mcp_server import AgentMCPServer
+                                    # Run the server directly (this is a blocking call)
+                                    await mcp_server.run_async(
+                                        transport=self.args.transport,
+                                        host=self.args.host,
+                                        port=self.args.port,
+                                    )
+                            except KeyboardInterrupt:
+                                if not quiet_mode:
+                                    print("\nServer stopped by user (Ctrl+C)")
+                            except Exception as e:
+                                if not quiet_mode:
+                                    print(f"\nServer stopped with error: {e}")
 
-                            mcp_server = AgentMCPServer(
-                                agent_app=wrapper,
-                                server_name=f"{self.name}-MCP-Server",
-                            )
-
-                            # Run the server directly (this is a blocking call)
-                            await mcp_server.run_async(
-                                transport=self.args.transport,
-                                host=self.args.host,
-                                port=self.args.port,
-                            )
-                        except KeyboardInterrupt:
-                            if not quiet_mode:
-                                print("\nServer stopped by user (Ctrl+C)")
-                        except Exception as e:
-                            if not quiet_mode:
-                                print(f"\nServer stopped with error: {e}")
-
-                        # Exit after server shutdown
-                        raise SystemExit(0)
-
-                    # Handle direct message sending if  --message is provided
-                    if self.args.message:
-                        agent_name = self.args.agent
-                        message = self.args.message
-
-                        if agent_name not in active_agents:
-                            available_agents = ", ".join(active_agents.keys())
-                            print(
-                                f"\n\nError: Agent '{agent_name}' not found. Available agents: {available_agents}"
-                            )
-                            raise SystemExit(1)
-
-                        try:
-                            # Get response from the agent
-                            agent = active_agents[agent_name]
-                            response = await agent.send(message)
-
-                            # In quiet mode, just print the raw response
-                            # The chat display should already be turned off by the configuration
-                            if self.args.quiet:
-                                print(f"{response}")
-
+                            # Exit after server shutdown
                             raise SystemExit(0)
-                        except Exception as e:
-                            print(f"\n\nError sending message to agent '{agent_name}': {str(e)}")
-                            raise SystemExit(1)
 
-                    if self.args.prompt_file:
-                        agent_name = self.args.agent
-                        prompt: List[PromptMessageMultipart] = load_prompt_multipart(
-                            Path(self.args.prompt_file)
-                        )
-                        if agent_name not in active_agents:
-                            available_agents = ", ".join(active_agents.keys())
-                            print(
-                                f"\n\nError: Agent '{agent_name}' not found. Available agents: {available_agents}"
+                        # Handle direct message sending if  --message is provided
+                        if self.args.message:
+                            agent_name = self.args.agent
+                            message = self.args.message
+
+                            if agent_name not in active_agents:
+                                available_agents = ", ".join(active_agents.keys())
+                                print(
+                                    f"\n\nError: Agent '{agent_name}' not found. Available agents: {available_agents}"
+                                )
+                                raise SystemExit(1)
+
+                            try:
+                                # Get response from the agent
+                                agent = active_agents[agent_name]
+                                response = await agent.send(message)
+
+                                # In quiet mode, just print the raw response
+                                # The chat display should already be turned off by the configuration
+                                if self.args.quiet:
+                                    print(f"{response}")
+
+                                raise SystemExit(0)
+                            except Exception as e:
+                                print(
+                                    f"\n\nError sending message to agent '{agent_name}': {str(e)}"
+                                )
+                                raise SystemExit(1)
+
+                        if self.args.prompt_file:
+                            agent_name = self.args.agent
+                            prompt: List[PromptMessageMultipart] = load_prompt_multipart(
+                                Path(self.args.prompt_file)
                             )
-                            raise SystemExit(1)
+                            if agent_name not in active_agents:
+                                available_agents = ", ".join(active_agents.keys())
+                                print(
+                                    f"\n\nError: Agent '{agent_name}' not found. Available agents: {available_agents}"
+                                )
+                                raise SystemExit(1)
 
-                        try:
-                            # Get response from the agent
-                            agent = active_agents[agent_name]
-                            response = await agent.generate(prompt)
+                            try:
+                                # Get response from the agent
+                                agent = active_agents[agent_name]
+                                response = await agent.generate(prompt)
 
-                            # In quiet mode, just print the raw response
-                            # The chat display should already be turned off by the configuration
-                            if self.args.quiet:
-                                print(f"{response.last_text()}")
+                                # In quiet mode, just print the raw response
+                                # The chat display should already be turned off by the configuration
+                                if self.args.quiet:
+                                    print(f"{response.last_text()}")
 
-                            raise SystemExit(0)
-                        except Exception as e:
-                            print(f"\n\nError sending message to agent '{agent_name}': {str(e)}")
-                            raise SystemExit(1)
+                                raise SystemExit(0)
+                            except Exception as e:
+                                print(
+                                    f"\n\nError sending message to agent '{agent_name}': {str(e)}"
+                                )
+                                raise SystemExit(1)
 
-                    yield wrapper
+                        yield wrapper
 
             except (
                 ServerConfigError,
