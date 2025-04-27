@@ -31,6 +31,7 @@ from mcp.types import (
     TextContent,
     Tool,
 )
+from opentelemetry import trace
 from pydantic import BaseModel
 
 from mcp_agent.core.agent_types import AgentConfig, AgentType

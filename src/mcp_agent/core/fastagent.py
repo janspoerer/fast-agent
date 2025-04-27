@@ -55,6 +55,7 @@ from mcp_agent.core.validation import (
     validate_workflow_references,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.logging.tracing import telemetry
 from mcp_agent.mcp.prompts.prompt_load import load_prompt_multipart
 
 if TYPE_CHECKING:
@@ -211,11 +212,16 @@ class FastAgent:
     evaluator_optimizer = evaluator_optimizer_decorator
 
     @asynccontextmanager
+    @telemetry.traced("fastagent.run")
     async def run(self):
         """
         Context manager for running the application.
         Initializes all registered agents.
         """
+
+        active_agents: Dict[str, Agent] = {}
+        had_error = False
+        await self.app.initialize()
         active_agents: Dict[str, Agent] = {}
         had_error = False
         await self.app.initialize()
@@ -289,7 +295,9 @@ class FastAgent:
 
                         # Run the server directly (this is a blocking call)
                         await mcp_server.run_async(
-                            transport=self.args.transport, host=self.args.host, port=self.args.port
+                            transport=self.args.transport,
+                            host=self.args.host,
+                            port=self.args.port,
                         )
                     except KeyboardInterrupt:
                         if not quiet_mode:

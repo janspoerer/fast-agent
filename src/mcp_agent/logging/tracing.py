@@ -45,7 +45,7 @@ class TelemetryManager(ContextDependent):
         def decorator(func):
             span_name = name or f"{func.__module__}.{func.__qualname__}"
 
-            tracer = self.context.tracer or trace.get_tracer("mcp_agent")
+            tracer = self.context.tracer or trace.get_tracer("fast-agent")
 
             @functools.wraps(func)
             async def async_wrapper(*args, **kwargs):

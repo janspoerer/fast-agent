@@ -53,7 +53,7 @@ class Context(BaseModel):
     server_registry: Optional[ServerRegistry] = None
     task_registry: Optional[ActivityRegistry] = None
 
-    tracer: Optional[trace.Tracer] = None
+    tracer: trace.Tracer | None = None
 
     model_config = ConfigDict(
         extra="allow",
