@@ -120,7 +120,6 @@ class GoogleAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
 
     async def _google_completion(
         self,
-        messages: List[types.Content],
         request_params: RequestParams | None = None,
     ) -> List[TextContent | ImageContent | EmbeddedResource]:
         """
@@ -128,14 +127,24 @@ class GoogleAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         """
         request_params = self.get_request_params(request_params=request_params)
         responses: List[TextContent | ImageContent | EmbeddedResource] = []
-        # Start with the input messages for this turn. This list will be updated
-        # with model responses and tool results within the loop for multi-turn.
-        conversation_history = list(messages)
+
+        # Load full conversation history if use_history is true
+        if request_params.use_history:
+            # Get history from self.history and convert to google.genai format
+            conversation_history = self._converter.convert_to_google_content(
+                self.history.get(include_completion_history=True)
+            )
+        else:
+            # If not using history, start with an empty list
+            conversation_history = []
 
         self.logger.debug(f"Google completion requested with messages: {conversation_history}")
         self._log_chat_progress(
             self.chat_turn(), model=request_params.model
         )  # Log chat progress at the start of completion
+
+        # Keep track of the number of messages in history before this turn
+        initial_history_length = len(conversation_history)
 
         for i in range(request_params.max_iterations):
             # 1. Get available tools
@@ -286,30 +295,13 @@ class GoogleAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
                 break
 
         # 6. Update history after all iterations are done (or max_iterations reached)
-        # This needs careful implementation to merge conversation_history into self.history
-        # The conversation_history contains google.genai.types.Content for the turns within this call.
-        # Need to convert these back to PromptMessageMultipart and add to self.history.
-        # Need a method in GoogleConverter to convert google.genai.types.Content to PromptMessageMultipart.
-        # Let's add a TODO for this conversion and history update outside the loop.
+        # Only add the new messages generated during this completion turn to history
         if request_params.use_history:
-            # Convert the full conversation_history (google.genai.types.Content) from this completion call
-            # to PromptMessageMultipart and append to the main self.history.
-            # Need to be careful not to duplicate messages already in self.history before this call.
-            # The initial messages passed into _google_completion are already part of the main history
-            # if request_params.use_history was true when _apply_prompt_provider_specific was called.
-            # So, we should only add the *new* messages generated within this _google_completion loop
-            # (model responses and tool results).
-
-            # A better approach: _apply_prompt_provider_specific should handle adding the initial
-            # user message to history. _google_completion should return the list of new messages
-            # (model responses and tool results) generated during the completion process,
-            # and _apply_prompt_provider_specific should add these to history.
-
-            # Let's revise: _google_completion will return the 'responses' list (fast-agent content types).
-            # The history update will happen in _apply_prompt_provider_specific.
-            # The conversation_history built within the loop is only for the API calls within this completion.
-
-            pass  # History update will be handled in _apply_prompt_provider_specific
+            new_google_messages = conversation_history[initial_history_length:]
+            new_multipart_messages = self._converter.convert_from_google_content_list(
+                new_google_messages
+            )
+            self.history.extend(new_multipart_messages)
 
         self._log_chat_finished(model=request_params.model)  # Use model from request_params
         return responses  # Return the accumulated responses (fast-agent content types)
@@ -327,24 +319,19 @@ class GoogleAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
             request_params=request_params
         )  # Get request params
 
-        # Convert incoming fast-agent messages to google.genai format for the initial call
-        initial_google_messages = self._converter.convert_to_google_content(multipart_messages)
+        # Add incoming messages to history before calling completion
+        # This ensures the current user message is part of the history for the API call
+        self.history.extend(multipart_messages, is_prompt=is_template)
 
         last_message_role = multipart_messages[-1].role if multipart_messages else None
 
         if last_message_role == "user":
             # If the last message is from the user, call the LLM for a response
-            # Pass the initial converted messages to _google_completion
-            responses = await self._google_completion(initial_google_messages, request_params)
+            # _google_completion will now load history internally
+            responses = await self._google_completion(request_params=request_params)
 
-            # Update history with the responses from _google_completion if use_history is true
-            if request_params.use_history:
-                # Convert the responses (fast-agent content types) back to PromptMessageMultipart
-                # and append to history. Need to create a PromptMessageMultipart with role 'assistant'.
-                assistant_message = Prompt.assistant(*responses)
-                self.history.extend(
-                    [assistant_message]
-                )  # Extend history with the new assistant message
+            # History update is now handled within _google_completion
+            pass
 
             return Prompt.assistant(*responses)  # Return combined responses as an assistant message
         else:
