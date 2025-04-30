@@ -21,6 +21,23 @@ class GoogleConverter:
     Converts between fast-agent and google.genai data structures.
     """
 
+    def _clean_schema_for_google(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        """Recursively removes 'additionalProperties' from a schema dictionary."""
+        cleaned_schema = {}
+        for key, value in schema.items():
+            if key == "additionalProperties":
+                continue  # Skip this key
+            if isinstance(value, dict):
+                cleaned_schema[key] = self._clean_schema_for_google(value)
+            elif isinstance(value, list):
+                cleaned_schema[key] = [
+                    self._clean_schema_for_google(item) if isinstance(item, dict) else item
+                    for item in value
+                ]
+            else:
+                cleaned_schema[key] = value
+        return cleaned_schema
+
     def convert_to_google_content(
         self, messages: List[PromptMessageMultipart]
     ) -> List[types.Content]:
@@ -73,12 +90,15 @@ class GoogleConverter:
         google_tools: List[types.Tool] = []
         for tool in tools:
             # Assuming ToolDefinition.inputSchema is a dict representing a JSON schema
+            # Clean the schema to remove 'additionalProperties' which google.genai.types.Schema might not support
+            cleaned_input_schema = self._clean_schema_for_google(tool.inputSchema)
+
             function_declaration = types.FunctionDeclaration(
                 name=tool.name,
                 description=tool.description if tool.description else "",
-                parameters=types.Schema.from_dict(
-                    tool.inputSchema
-                ),  # Convert JSON schema dict to google.genai Schema
+                parameters=types.Schema(
+                    **cleaned_input_schema
+                ),  # Convert cleaned JSON schema dict to google.genai Schema
             )
             google_tools.append(types.Tool(function_declarations=[function_declaration]))
         return google_tools
@@ -175,45 +195,50 @@ class GoogleConverter:
 
         return google_tool_response_contents
 
+    def convert_request_params_to_google_config(
+        self, request_params: RequestParams
+    ) -> types.GenerateContentConfig:
+        """
+        Converts fast-agent RequestParams to google.genai types.GenerateContentConfig.
+        """
+        config_args: Dict[str, Any] = {}
 
-def convert_request_params_to_google_config(
-    self, request_params: RequestParams
-) -> types.GenerateContentConfig:
-    """
-    Converts fast-agent RequestParams to google.genai types.GenerateContentConfig.
-    """
-    config_args: Dict[str, Any] = {}
+        # Map common parameters
+        if request_params.temperature is not None:
+            config_args["temperature"] = request_params.temperature
+        if request_params.maxTokens is not None:
+            # google.genai uses max_output_tokens
+            config_args["max_output_tokens"] = request_params.maxTokens
+        if hasattr(request_params, "topK") and request_params.topK is not None:
+            config_args["top_k"] = request_params.topK
+        if hasattr(request_params, "topP") and request_params.topP is not None:
+            config_args["top_p"] = request_params.topP
+        if hasattr(request_params, "stopSequences") and request_params.stopSequences is not None:
+            config_args["stop_sequences"] = request_params.stopSequences
+        if (
+            hasattr(request_params, "presencePenalty")
+            and request_params.presencePenalty is not None
+        ):
+            config_args["presence_penalty"] = request_params.presencePenalty
+        if (
+            hasattr(request_params, "frequencyPenalty")
+            and request_params.frequencyPenalty is not None
+        ):
+            config_args["frequency_penalty"] = request_params.frequencyPenalty
 
-    # Map common parameters
-    if request_params.temperature is not None:
-        config_args["temperature"] = request_params.temperature
-    if request_params.maxTokens is not None:
-        # google.genai uses max_output_tokens
-        config_args["max_output_tokens"] = request_params.maxTokens
-    if hasattr(request_params, "topK") and request_params.topK is not None:
-        config_args["top_k"] = request_params.topK
-    if hasattr(request_params, "topP") and request_params.topP is not None:
-        config_args["top_p"] = request_params.topP
-    if hasattr(request_params, "stopSequences") and request_params.stopSequences is not None:
-        config_args["stop_sequences"] = request_params.stopSequences
-    if hasattr(request_params, "presencePenalty") and request_params.presencePenalty is not None:
-        config_args["presence_penalty"] = request_params.presencePenalty
-    if hasattr(request_params, "frequencyPenalty") and request_params.frequencyPenalty is not None:
-        config_args["frequency_penalty"] = request_params.frequencyPenalty
+        # System instruction
+        if request_params.systemPrompt is not None:
+            config_args["system_instruction"] = request_params.systemPrompt
 
-    # System instruction
-    if request_params.systemPrompt is not None:
-        config_args["system_instruction"] = request_params.systemPrompt
+        # Tool configuration will be handled in _google_completion based on available tools and parallel_tool_calls
 
-    # Tool configuration will be handled in _google_completion based on available tools and parallel_tool_calls
+        # Safety settings - assuming safety settings are part of request_params or global config
+        # If they are in request_params, they need to be mapped to types.SafetySetting
+        # if hasattr(request_params, 'safety_settings') and request_params.safety_settings:
+        #     config_args['safety_settings'] = self.convert_to_google_safety_settings(request_params.safety_settings)
 
-    # Safety settings - assuming safety settings are part of request_params or global config
-    # If they are in request_params, they need to be mapped to types.SafetySetting
-    # if hasattr(request_params, 'safety_settings') and request_params.safety_settings:
-    #     config_args['safety_settings'] = self.convert_to_google_safety_settings(request_params.safety_settings)
-
-    # Create the GenerateContentConfig object
-    return types.GenerateContentConfig(**config_args)
+        # Create the GenerateContentConfig object
+        return types.GenerateContentConfig(**config_args)
 
     def convert_from_google_content_list(
         self, contents: List[types.Content]
