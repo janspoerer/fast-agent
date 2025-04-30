@@ -143,11 +143,28 @@ class GoogleConverter:
             # A more robust approach: structure the tool result into a specific dictionary format
             # that the model can understand. This depends on the expected tool response format.
 
-            # Let's assume for now we structure it as a dict with a 'result' key holding the string representation.
-            # This might need adjustment based on actual tool output structure.
-            tool_response_data: Dict[str, Any] = {
-                "result": str(tool_result.content)
-            }  # Needs refinement
+            # Structure the tool result content into a dictionary
+            tool_response_data: Dict[str, Any] = {}
+            for content_part in tool_result.content:
+                if isinstance(content_part, TextContent):
+                    if "text" not in tool_response_data:
+                        tool_response_data["text"] = []
+                    tool_response_data["text"].append(content_part.text)
+                elif isinstance(content_part, EmbeddedResource):
+                    if "resource" not in tool_response_data:
+                        tool_response_data["resource"] = []
+                    # Represent resource as a dictionary with uri and mimeType
+                    resource_data = {}
+                    if hasattr(content_part.resource, "uri") and content_part.resource.uri:
+                        resource_data["uri"] = content_part.resource.uri
+                    if (
+                        hasattr(content_part.resource, "mimeType")
+                        and content_part.resource.mimeType
+                    ):
+                        resource_data["mimeType"] = content_part.resource.mimeType
+                    # Add other relevant resource attributes if needed
+                    tool_response_data["resource"].append(resource_data)
+                # Add handling for other content types in CallToolResult if necessary
 
             tool_response_part = types.Part.from_function_response(
                 name=tool_name, response=tool_response_data
@@ -158,47 +175,45 @@ class GoogleConverter:
 
         return google_tool_response_contents
 
-    def convert_request_params_to_google_config(
-        self, request_params: RequestParams
-    ) -> types.GenerateContentConfig:
-        """
-        Converts fast-agent RequestParams to google.genai types.GenerateContentConfig.
-        """
-        config_args: Dict[str, Any] = {}
 
-        # Map common parameters
-        if request_params.temperature is not None:
-            config_args["temperature"] = request_params.temperature
-        if request_params.maxTokens is not None:
-            # google.genai uses max_output_tokens
-            config_args["max_output_tokens"] = request_params.maxTokens
-        # Map other relevant parameters like top_k, top_p if they exist in RequestParams
-        # Need to check if RequestParams has these attributes or add them if needed.
+def convert_request_params_to_google_config(
+    self, request_params: RequestParams
+) -> types.GenerateContentConfig:
+    """
+    Converts fast-agent RequestParams to google.genai types.GenerateContentConfig.
+    """
+    config_args: Dict[str, Any] = {}
 
-        # System instruction
-        if request_params.systemPrompt is not None:
-            config_args["system_instruction"] = request_params.systemPrompt
+    # Map common parameters
+    if request_params.temperature is not None:
+        config_args["temperature"] = request_params.temperature
+    if request_params.maxTokens is not None:
+        # google.genai uses max_output_tokens
+        config_args["max_output_tokens"] = request_params.maxTokens
+    if hasattr(request_params, "topK") and request_params.topK is not None:
+        config_args["top_k"] = request_params.topK
+    if hasattr(request_params, "topP") and request_params.topP is not None:
+        config_args["top_p"] = request_params.topP
+    if hasattr(request_params, "stopSequences") and request_params.stopSequences is not None:
+        config_args["stop_sequences"] = request_params.stopSequences
+    if hasattr(request_params, "presencePenalty") and request_params.presencePenalty is not None:
+        config_args["presence_penalty"] = request_params.presencePenalty
+    if hasattr(request_params, "frequencyPenalty") and request_params.frequencyPenalty is not None:
+        config_args["frequency_penalty"] = request_params.frequencyPenalty
 
-        # Tool configuration will be handled in _google_completion based on available tools and parallel_tool_calls
+    # System instruction
+    if request_params.systemPrompt is not None:
+        config_args["system_instruction"] = request_params.systemPrompt
 
-        # Safety settings - assuming safety settings are part of request_params or global config
-        # If they are in request_params, they need to be mapped to types.SafetySetting
-        # if hasattr(request_params, 'safety_settings') and request_params.safety_settings:
-        #     config_args['safety_settings'] = self.convert_to_google_safety_settings(request_params.safety_settings)
+    # Tool configuration will be handled in _google_completion based on available tools and parallel_tool_calls
 
-        # Stop sequences
-        # If stop sequences are part of request_params, map them
-        # if hasattr(request_params, 'stop_sequences') and request_params.stop_sequences:
-        #     config_args['stop_sequences'] = request_params.stop_sequences
+    # Safety settings - assuming safety settings are part of request_params or global config
+    # If they are in request_params, they need to be mapped to types.SafetySetting
+    # if hasattr(request_params, 'safety_settings') and request_params.safety_settings:
+    #     config_args['safety_settings'] = self.convert_to_google_safety_settings(request_params.safety_settings)
 
-        # Presence and Frequency penalties - need to check if in RequestParams or add
-        # if hasattr(request_params, 'presence_penalty') and request_params.presence_penalty:
-        #     config_args['presence_penalty'] = request_params.presence_penalty
-        # if hasattr(request_params, 'frequency_penalty') and request_params.frequency_penalty:
-        #     config_args['frequency_penalty'] = request_params.frequency_penalty
-
-        # Create the GenerateContentConfig object
-        return types.GenerateContentConfig(**config_args)
+    # Create the GenerateContentConfig object
+    return types.GenerateContentConfig(**config_args)
 
     def convert_from_google_content_list(
         self, contents: List[types.Content]
