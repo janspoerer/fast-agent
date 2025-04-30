@@ -252,6 +252,12 @@ class GoogleConverter:
         """
         Converts a single google.genai types.Content to a fast-agent PromptMessageMultipart.
         """
+        # If the content is a model's function call, create an assistant message with empty content
+        # as tool call requests are handled separately for execution and not stored in history content.
+        if content.role == "model" and any(part.function_call for part in content.parts):
+            # Map google.genai 'model' role to fast-agent 'assistant' role
+            return PromptMessageMultipart(role="assistant", content=[])
+
         fast_agent_parts: List[
             TextContent | ImageContent | EmbeddedResource | CallToolRequestParams
         ] = []
@@ -259,15 +265,11 @@ class GoogleConverter:
         for part in content.parts:
             if part.text:
                 fast_agent_parts.append(TextContent(type="text", text=part.text))
-            elif part.function_call:
-                # This part converts a function_call from the model's response
-                # into a CallToolRequestParams object for fast-agent's tool execution.
-                fast_agent_parts.append(
-                    CallToolRequestParams(
-                        name=part.function_call.name,
-                        arguments=part.function_call.args,  # args is already a dict
-                    )
-                )
+            elif part.function_response:
+                # Convert function response to TextContent for history
+                # Assuming function_response.response is a dict, convert it to a string
+                response_text = str(part.function_response.response)
+                fast_agent_parts.append(TextContent(type="text", text=response_text))
             elif part.file_data:
                 # Handle file_data (e.g., images from GCS URIs)
                 # This requires fetching the content from the URI.
@@ -285,15 +287,15 @@ class GoogleConverter:
                 )
             # Add handling for other part types if needed
 
-        # Map google.genai roles to fast-agent roles
+        # Map google.genai roles to fast-agent roles for PromptMessageMultipart history
         # google.genai: 'user', 'model', 'tool'
         # fast-agent: 'user', 'assistant', 'tool', 'system'
         # 'system' role is not expected in model responses, handled in config.
-        fast_agent_role = (
-            "user"
-            if content.role == "user"
-            else ("assistant" if content.role == "model" else "tool")
-        )
+        if content.role == "user":
+            fast_agent_role = "user"
+        else:
+            # Map 'model' and 'tool' roles to 'assistant' for history
+            fast_agent_role = "assistant"
 
         return PromptMessageMultipart(role=fast_agent_role, content=fast_agent_parts)
 
