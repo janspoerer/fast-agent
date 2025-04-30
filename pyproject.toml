@@ -32,6 +32,7 @@ dependencies = [
     "opentelemetry-instrumentation-openai>=0.39.3",
     "opentelemetry-instrumentation-anthropic>=0.39.3",
     "tensorzero>=2025.4.7",
+    "google-genai"
 ]
 
 [project.optional-dependencies]
