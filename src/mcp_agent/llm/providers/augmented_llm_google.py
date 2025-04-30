@@ -1,3 +1,4 @@
+import warnings
 from typing import List
 
 # Import necessary types and client from google.genai
@@ -28,6 +29,15 @@ from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 
 # Define default model and potentially other Google-specific defaults
 DEFAULT_GOOGLE_MODEL = "gemini-2.0-flash"
+
+# Suppress this warning for now
+# TODO: Find out where we're passing null
+warnings.filterwarnings(
+    "ignore",
+    message="null is not a valid Type",
+    category=UserWarning,
+    module="google.genai._common",
+)
 
 
 class GoogleAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
@@ -139,12 +149,12 @@ class GoogleAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
                 request_params
             )
 
-            # Add tool_config to generate_content_config if tools are available
+            # Add tools and tool_config to generate_content_config if tools are available
             if available_tools:
+                generate_content_config.tools = available_tools
+                # Set tool_config mode to AUTO to allow the model to decide when to call tools
                 generate_content_config.tool_config = types.ToolConfig(
-                    function_calling_config=types.FunctionCallingConfig(
-                        mode="ANY" if request_params.parallel_tool_calls else "AUTO"
-                    )
+                    function_calling_config=types.FunctionCallingConfig(mode="AUTO")
                 )
 
             # 3. Call the google.genai API
@@ -153,10 +163,7 @@ class GoogleAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
                 api_response = await self._google_client.aio.models.generate_content(
                     model=request_params.model,
                     contents=conversation_history,  # Pass the current turn's conversation history
-                    generation_config=generate_content_config,
-                    tools=available_tools
-                    if available_tools
-                    else None,  # Pass tools here as a separate parameter
+                    config=generate_content_config,
                 )
                 self.logger.debug("Google generate_content response:", data=api_response)
 
