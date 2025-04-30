@@ -55,11 +55,8 @@ class GoogleConverter:
                     # Assuming ImageContent has a 'data' attribute with bytes or a 'url' attribute
                     # The google.genai library supports image bytes or GCS URIs.
                     if hasattr(part, "data") and part.data:
-                        # Need to determine the mime type from ImageContent or assume
-                        # This might require adding mime_type to ImageContent
-                        # For now, a placeholder:
-                        mime_type = "image/jpeg"  # TODO: Determine actual mime type
-                        parts.append(types.Part.from_bytes(data=part.data, mime_type=mime_type))
+                        # Use the mime type provided in ImageContent
+                        parts.append(types.Part.from_bytes(data=part.data, mime_type=part.mimeType))
                     elif hasattr(part, "url") and part.url:
                         # Assumes the URL is a GCS URI if using Vertex AI, or needs file upload for Gemini API
                         # Handling file uploads adds complexity and might be a separate step/consideration
