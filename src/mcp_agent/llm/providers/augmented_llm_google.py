@@ -27,7 +27,7 @@ from mcp_agent.llm.providers.google_converter import GoogleConverter
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 
 # Define default model and potentially other Google-specific defaults
-DEFAULT_GOOGLE_MODEL = "gemini-pro"  # Or another suitable default model
+DEFAULT_GOOGLE_MODEL = "gemini-2.0-flash"
 
 
 class GoogleAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
