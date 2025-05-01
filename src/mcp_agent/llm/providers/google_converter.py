@@ -25,7 +25,7 @@ class GoogleConverter:
         """Recursively removes 'additionalProperties' from a schema dictionary."""
         cleaned_schema = {}
         for key, value in schema.items():
-            if key == "additionalProperties":
+            if key == "additionalProperties" or key == "$schema":
                 continue  # Skip this key
             if isinstance(value, dict):
                 cleaned_schema[key] = self._clean_schema_for_google(value)
