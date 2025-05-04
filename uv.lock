@@ -436,6 +436,7 @@ dependencies = [
     { name = "opentelemetry-distro" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-instrumentation-anthropic" },
+    { name = "opentelemetry-instrumentation-google-genai" },
     { name = "opentelemetry-instrumentation-openai" },
     { name = "prompt-toolkit" },
     { name = "pydantic" },
@@ -490,6 +491,7 @@ requires-dist = [
     { name = "opentelemetry-distro", specifier = ">=0.50b0" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.29.0" },
     { name = "opentelemetry-instrumentation-anthropic", specifier = ">=0.39.3" },
+    { name = "opentelemetry-instrumentation-google-genai", specifier = ">=0.2b0" },
     { name = "opentelemetry-instrumentation-openai", specifier = ">=0.39.3" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.0.1" },
     { name = "prompt-toolkit", specifier = ">=3.0.50" },
@@ -1180,6 +1182,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1f/14/7920886f4773543c29d542320c6f05818c0a4caaf7e697adf584d124b2b2/opentelemetry_instrumentation_anthropic-0.40.3.tar.gz", hash = "sha256:5e40a9d3342d800180d29e028f3d1aa5db3e0ec482362a7eef054ee500fb8d4f", size = 8968 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/41/d7/e2b72986563df5d5e4f699e1414b3348cb02150f769a13f55d635dfa9f65/opentelemetry_instrumentation_anthropic-0.40.3-py3-none-any.whl", hash = "sha256:152a7968d86ade48ffb4df526129def598e8e3eeb1c4fb11a5e6a3bbc94c0fd4", size = 11505 },
+]
+
+[[package]]
+name = "opentelemetry-instrumentation-google-genai"
+version = "0.2b0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-semantic-conventions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a7/c1/bf6870d7a7798ed0c6d23ea432971a0daf91edb49ef232b876ce0ab85b3f/opentelemetry_instrumentation_google_genai-0.2b0.tar.gz", hash = "sha256:a901decaced8161afda1029cc60af118d1b44690bcfa0ced03d8ffe6030c2932", size = 34807 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/36/48/5d7e13c7b90dd681a995cf495f772cb2f0e18ecd162e83d2d87c356660ee/opentelemetry_instrumentation_google_genai-0.2b0-py3-none-any.whl", hash = "sha256:6b1ae5dd0c9efdbf73c19c5825487eb4a09bd7affe656445207a813ce58d9821", size = 23291 },
 ]
 
 [[package]]
