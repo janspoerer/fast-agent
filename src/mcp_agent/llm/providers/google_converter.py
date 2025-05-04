@@ -22,11 +22,30 @@ class GoogleConverter:
     """
 
     def _clean_schema_for_google(self, schema: Dict[str, Any]) -> Dict[str, Any]:
-        """Recursively removes 'additionalProperties' from a schema dictionary."""
+        """
+        Recursively removes unsupported JSON schema keywords for google.genai.types.Schema.
+        Specifically removes 'additionalProperties', '$schema', 'exclusiveMaximum', and 'exclusiveMinimum'.
+        """
         cleaned_schema = {}
+        unsupported_keys = {
+            "additionalProperties",
+            "$schema",
+            "exclusiveMaximum",
+            "exclusiveMinimum",
+        }
+        supported_string_formats = {"enum", "date-time"}
+
         for key, value in schema.items():
-            if key == "additionalProperties" or key == "$schema":
+            if key in unsupported_keys:
                 continue  # Skip this key
+
+            if (
+                key == "format"
+                and schema.get("type") == "string"
+                and value not in supported_string_formats
+            ):
+                continue  # Remove unsupported string formats
+
             if isinstance(value, dict):
                 cleaned_schema[key] = self._clean_schema_for_google(value)
             elif isinstance(value, list):
