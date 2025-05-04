@@ -202,7 +202,7 @@ class GoogleAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
             model=chosen_model,
             systemPrompt=self.instruction,  # System instruction will be mapped in _google_completion
             parallel_tool_calls=True,  # Assume parallel tool calls are supported by default with native API
-            max_iterations=10,
+            max_iterations=20,
             use_history=True,
             # Include other relevant default parameters
         )
