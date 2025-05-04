@@ -45,6 +45,95 @@ class GoogleAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
     Google LLM provider using the native google.genai library.
     """
 
+    async def _apply_prompt_provider_specific_structured(
+        self,
+        multipart_messages,
+        model,
+        request_params=None,
+    ):
+        """
+        Handles structured output for Gemini models using response_schema and response_mime_type.
+        """
+        import json
+
+        # Prepare request params
+        request_params = self.get_request_params(request_params)
+        # Convert Pydantic model to schema dict for Gemini
+        schema = None
+        try:
+            schema = model.model_json_schema()
+        except Exception:
+            pass
+
+        # Set up Gemini config for structured output
+        def _get_schema_type(model):
+            # Try to get the type annotation for the model (for list[...] etc)
+            # Fallback to dict schema if not available
+            try:
+                return model
+            except Exception:
+                return None
+
+        # Use the schema as a dict or as a type, as Gemini supports both
+        response_schema = _get_schema_type(model)
+        if schema is not None:
+            response_schema = schema
+
+        # Set config for structured output
+        generate_content_config = self._converter.convert_request_params_to_google_config(
+            request_params
+        )
+        generate_content_config.response_mime_type = "application/json"
+        generate_content_config.response_schema = response_schema
+
+        # Convert messages to google.genai format
+        conversation_history = self._converter.convert_to_google_content(multipart_messages)
+
+        # Call Gemini API
+        try:
+            api_response = await self._google_client.aio.models.generate_content(
+                model=request_params.model,
+                contents=conversation_history,
+                config=generate_content_config,
+            )
+        except Exception as e:
+            self.logger.error(f"Error during Gemini structured call: {e}")
+            # Return None and a dummy assistant message
+            return None, Prompt.assistant(f"Error: {e}")
+
+        # Parse the response as JSON and validate against the model
+        if not api_response.candidates or not api_response.candidates[0].content.parts:
+            return None, Prompt.assistant("No structured response returned.")
+
+        # Try to extract the JSON from the first part
+        text = None
+        for part in api_response.candidates[0].content.parts:
+            if part.text:
+                text = part.text
+                break
+        if text is None:
+            return None, Prompt.assistant("No structured text returned.")
+
+        try:
+            json_data = json.loads(text)
+            validated_model = model.model_validate(json_data)
+            # Update LLM history with user and assistant messages for correct history tracking
+            # Add user message(s)
+            for msg in multipart_messages:
+                self.history.append(msg)
+            # Add assistant message
+            assistant_msg = Prompt.assistant(text)
+            self.history.append(assistant_msg)
+            return validated_model, assistant_msg
+        except Exception as e:
+            self.logger.warning(f"Failed to parse structured response: {e}")
+            # Still update history for consistency
+            for msg in multipart_messages:
+                self.history.append(msg)
+            assistant_msg = Prompt.assistant(text)
+            self.history.append(assistant_msg)
+            return None, assistant_msg
+
     # Define Google-specific parameter exclusions if necessary
     GOOGLE_EXCLUDE_FIELDS = {
         # Add fields that should not be passed directly from RequestParams to google.genai config

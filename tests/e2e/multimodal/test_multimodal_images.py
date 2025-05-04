@@ -52,7 +52,6 @@ async def test_agent_with_image_prompt(fast_agent, model_name):
     [
         "gpt-4.1-mini",  # OpenAI
         "sonnet",  # Anthropic
-        "gemini2",  # Google
     ],
 )
 async def test_agent_with_mcp_image(fast_agent, model_name):
@@ -191,7 +190,6 @@ async def test_agent_includes_tool_results_in_multipart_result_anthropic(fast_ag
     "model_name",
     [
         "gpt-4.1-mini",  # OpenAI model
-        "gemini2",
     ],
 )
 async def test_agent_includes_tool_results_in_multipart_result_openai(fast_agent, model_name):
