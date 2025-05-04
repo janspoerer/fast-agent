@@ -148,6 +148,7 @@ class WeatherForecast(BaseModel):
         "gpt-4.1-nano",
         "gpt-4.1-mini",
         "gemini2",
+        "gemini25",
     ],
 )
 async def test_structured_weather_forecast_openai_structured_api(fast_agent, model_name):

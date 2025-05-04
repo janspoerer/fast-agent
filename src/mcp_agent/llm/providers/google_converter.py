@@ -12,6 +12,13 @@ from mcp.types import (
 )
 
 from mcp_agent.core.request_params import RequestParams
+from mcp_agent.mcp.helpers.content_helpers import (
+    get_image_data,
+    get_text,
+    is_image_content,
+    is_resource_content,
+    is_text_content,
+)
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.tools.tool_definition import ToolDefinition
 
@@ -182,11 +189,21 @@ class GoogleConverter:
             # Structure the tool result content into a dictionary
             tool_response_data: Dict[str, Any] = {}
             for content_part in tool_result.content:
-                if isinstance(content_part, TextContent):
+                if is_text_content(content_part):
                     if "text" not in tool_response_data:
                         tool_response_data["text"] = []
-                    tool_response_data["text"].append(content_part.text)
-                elif isinstance(content_part, EmbeddedResource):
+                    tool_response_data["text"].append(get_text(content_part))
+                elif is_image_content(content_part):
+                    if "image" not in tool_response_data:
+                        tool_response_data["image"] = []
+                    # Assuming content_part.data is base64 encoded image data
+                    tool_response_data["image"].append(
+                        {
+                            "data": get_image_data(content_part),
+                            "mimeType": content_part.mimeType,
+                        }
+                    )
+                elif is_resource_content(content_part):
                     if "resource" not in tool_response_data:
                         tool_response_data["resource"] = []
                     # Represent resource as a dictionary with uri and mimeType
