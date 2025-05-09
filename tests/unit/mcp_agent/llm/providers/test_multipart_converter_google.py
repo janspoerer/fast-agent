@@ -37,7 +37,7 @@ class TestOpenAIToolConverter(unittest.TestCase):
         )
         assert 1 == len(converted)
         assert "tool" == converted[0].role
-        assert self.sample_text == converted[0].parts[0].function_response.response["text"][0]
+        assert self.sample_text == converted[0].parts[0].function_response.response["text_content"]
 
     def test_multiple_tool_results_with_mixed_content(self):
         """Test conversion of multiple tool results with different content types."""

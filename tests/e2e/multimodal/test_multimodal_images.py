@@ -62,7 +62,7 @@ async def test_agent_with_mcp_image(fast_agent, model_name):
     # Define the agent
     @fast.agent(
         "agent",
-        instruction="You are a helpful AI Agent",
+        instruction="You are a helpful AI Agent. Do not ask any questions.",
         servers=["image_server"],
         model=model_name,
     )
