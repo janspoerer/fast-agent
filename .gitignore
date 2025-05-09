@@ -1,4 +1,4 @@
-# Byte-compiled / optimized / DLL files
+s# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -200,3 +200,4 @@ fastagent.jsonl
 # JetBrains IDEs
 .idea/
 tests/e2e/smoke/base/weather_location.txt
+tests/integration/roots/fastagent.jsonl

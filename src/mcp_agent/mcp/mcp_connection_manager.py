@@ -23,6 +23,7 @@ from mcp.client.stdio import (
     get_default_environment,
     stdio_client,
 )
+from mcp.client.streamable_http import GetSessionIdCallback, streamablehttp_client
 from mcp.types import JSONRPCMessage, ServerCapabilities
 
 from mcp_agent.config import MCPServerSettings
@@ -38,6 +39,27 @@ if TYPE_CHECKING:
     from mcp_agent.mcp_server_registry import InitHookCallable, ServerRegistry
 
 logger = get_logger(__name__)
+
+
+class StreamingContextAdapter:
+    """Adapter to provide a 3-value context from a 2-value context manager"""
+
+    def __init__(self, context_manager):
+        self.context_manager = context_manager
+        self.cm_instance = None
+
+    async def __aenter__(self):
+        self.cm_instance = await self.context_manager.__aenter__()
+        read_stream, write_stream = self.cm_instance
+        return read_stream, write_stream, None
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return await self.context_manager.__aexit__(exc_type, exc_val, exc_tb)
+
+
+def _add_none_to_context(context_manager):
+    """Helper to add a None value to context managers that return 2 values instead of 3"""
+    return StreamingContextAdapter(context_manager)
 
 
 class ServerConnection:
@@ -57,6 +79,7 @@ class ServerConnection:
                 tuple[
                     MemoryObjectReceiveStream[JSONRPCMessage | Exception],
                     MemoryObjectSendStream[JSONRPCMessage],
+                    GetSessionIdCallback | None,
                 ],
                 None,
             ],
@@ -162,7 +185,7 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
     try:
         transport_context = server_conn._transport_context_factory()
 
-        async with transport_context as (read_stream, write_stream):
+        async with transport_context as (read_stream, write_stream, _):
             server_conn.create_session(read_stream, write_stream)
 
             async with server_conn.session:
@@ -303,14 +326,17 @@ class MCPConnectionManager(ContextDependent):
                 error_handler = get_stderr_handler(server_name)
                 # Explicitly ensure we're using our custom logger for stderr
                 logger.debug(f"{server_name}: Creating stdio client with custom error handler")
-                return stdio_client(server_params, errlog=error_handler)
+                return _add_none_to_context(stdio_client(server_params, errlog=error_handler))
             elif config.transport == "sse":
-                return sse_client(
-                    config.url,
-                    config.headers,
-                    sse_read_timeout=config.read_transport_sse_timeout_seconds,
+                return _add_none_to_context(
+                    sse_client(
+                        config.url,
+                        config.headers,
+                        sse_read_timeout=config.read_transport_sse_timeout_seconds,
+                    )
                 )
-
+            elif config.transport == "http":
+                return streamablehttp_client(config.url, config.headers)
             else:
                 raise ValueError(f"Unsupported transport: {config.transport}")
 
