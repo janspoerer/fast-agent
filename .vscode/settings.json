@@ -7,11 +7,10 @@
     "editor.rulers": []
   },
   "yaml.schemas": {
-    "fastagent.config.schema.json": [
+    "./.vscode/fastagent.config.schema.json": [
       "fastagent.config.yaml",
       "fastagent.secrets.yaml"
-    ],
-    "file:///home/ssmith/source/fast-agent/fastagent.config.schema.json": "file:///home/ssmith/source/fast-agent/fastagent.secrets.yaml"
+    ]
   },
   "editor.fontFamily": "BlexMono Nerd Font",
   "python.testing.pytestArgs": ["tests"],
