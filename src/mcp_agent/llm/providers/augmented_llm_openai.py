@@ -144,7 +144,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
                 function={
                     "name": tool.name,
                     "description": tool.description if tool.description else "",
-                    "parameters": tool.inputSchema,
+                    "parameters": adjust_schema(tool.inputSchema),
                 },
             )
             for tool in response.tools
@@ -351,3 +351,12 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
             base_args, request_params, self.OPENAI_EXCLUDE_FIELDS.union(self.BASE_EXCLUDE_FIELDS)
         )
         return arguments
+
+
+def adjust_schema(inputSchema: Dict) -> Dict:
+    if "proprties" in inputSchema:
+        return inputSchema
+
+    result = inputSchema.copy()
+    result["properties"] = {}
+    return result

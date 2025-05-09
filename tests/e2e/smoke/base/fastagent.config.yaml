@@ -35,3 +35,6 @@ mcp:
     hyphen-name:
       command: "uv"
       args: ["run", "test_server.py"]
+    temp_issue_ts:
+      transport: "sse"
+      url: "http://localhost:8080/sse"
