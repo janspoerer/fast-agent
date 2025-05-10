@@ -182,34 +182,34 @@ async def test_structured_weather_forecast_openai_structured_api(fast_agent, mod
 
             # Verify the structured response
             assert forecast is not None, "Structured response should not be None"
-            assert isinstance(forecast, WeatherForecast), (
-                "Response should be a WeatherForecast object"
-            )
+            assert isinstance(
+                forecast, WeatherForecast
+            ), "Response should be a WeatherForecast object"
 
             # Verify forecast content
-            assert forecast.location.lower().find("san francisco") >= 0, (
-                "Location should be San Francisco"
-            )
+            assert (
+                forecast.location.lower().find("san francisco") >= 0
+            ), "Location should be San Francisco"
             assert forecast.unit == "celsius", "Temperature unit should be celsius"
             assert len(forecast.forecast) == 5, "Should have 5 days of forecast"
-            assert all(isinstance(day, DailyForecast) for day in forecast.forecast), (
-                "Each day should be a DailyForecast"
-            )
+            assert all(
+                isinstance(day, DailyForecast) for day in forecast.forecast
+            ), "Each day should be a DailyForecast"
 
             # Verify data types and ranges
             for day in forecast.forecast:
-                assert 0 <= day.precipitation_chance <= 100, (
-                    f"Precipitation chance should be 0-100%, got {day.precipitation_chance}"
-                )
-                assert -50 <= day.temperature_low <= 60, (
-                    f"Temperature low should be reasonable, got {day.temperature_low}"
-                )
-                assert -30 <= day.temperature_high <= 70, (
-                    f"Temperature high should be reasonable, got {day.temperature_high}"
-                )
-                assert day.temperature_high >= day.temperature_low, (
-                    "High temp should be >= low temp"
-                )
+                assert (
+                    0 <= day.precipitation_chance <= 100
+                ), f"Precipitation chance should be 0-100%, got {day.precipitation_chance}"
+                assert (
+                    -50 <= day.temperature_low <= 60
+                ), f"Temperature low should be reasonable, got {day.temperature_low}"
+                assert (
+                    -30 <= day.temperature_high <= 70
+                ), f"Temperature high should be reasonable, got {day.temperature_high}"
+                assert (
+                    day.temperature_high >= day.temperature_low
+                ), "High temp should be >= low temp"
 
             # Print forecast summary for debugging
             print(f"Weather forecast for {forecast.location}: {forecast.summary}")
@@ -289,9 +289,9 @@ async def test_basic_tool_calling(fast_agent, model_name):
             assert "sunny" in response
 
             # Check that the file exists after response
-            assert os.path.exists("weather_location.txt"), (
-                "File should exist after response (created by tool call)"
-            )
+            assert os.path.exists(
+                "weather_location.txt"
+            ), "File should exist after response (created by tool call)"
 
     await weather_forecast()
 
@@ -313,7 +313,6 @@ async def test_basic_tool_calling(fast_agent, model_name):
     ],
 )
 async def test_tool_calls_no_args(fast_agent, model_name):
-    """Test that the agent can generate structured weather forecast data."""
     fast = fast_agent
 
     @fast.agent(
@@ -328,6 +327,43 @@ async def test_tool_calls_no_args(fast_agent, model_name):
             assert "blue" in response
 
     await tools_no_args()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.e2e
+@pytest.mark.parametrize(
+    "model_name",
+    [
+        "deepseek",
+        "haiku35",
+        #       "gpt-4o",
+        #      "gpt-4.1",
+        #     "gpt-4.1-nano",
+        "gpt-4.1-mini",
+        "google.gemini-2.0-flash",
+        #       "openrouter.anthropic/claude-3.7-sonnet",
+    ],
+)
+async def test_tool_calls_no_args_typescript(fast_agent, model_name):
+    """Temporary test to diagnose typescript server issues"""
+    pass
+    # fast = fast_agent
+
+    # @fast.agent(
+    #     "shirt_colour",
+    #     instruction="You are a helpful assistant that provides information on shirt colours.",
+    #     model=model_name,
+    #     servers=["temp_issue_ts"],
+    # )
+    # async def tools_no_args_typescript():
+    #     async with fast.run() as agent:
+    #         response = await agent.send(
+    #             Prompt.user("tell me the response from the crashtest1 tool")
+    #         )
+    #         assert "did it work?" in response
+
+    # await tools_no_args_typescript()
 
 
 @pytest.mark.integration
