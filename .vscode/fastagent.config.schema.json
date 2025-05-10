@@ -236,6 +236,12 @@
           "title": "Truncate Tools",
           "type": "boolean",
           "description": "Truncate display of long tool calls"
+        },
+        "enable_markup": {
+          "default": true,
+          "title": "Enable Markup",
+          "type": "boolean",
+          "description": "Enable markup in console output. Disable for outputs that may conflict with rich console formatting"
         }
       },
       "title": "LoggerSettings",
@@ -348,7 +354,8 @@
           "default": "stdio",
           "enum": [
             "stdio",
-            "sse"
+            "sse",
+            "http"
           ],
           "title": "Transport",
           "type": "string",
@@ -822,7 +829,8 @@
         "http_timeout": 5.0,
         "show_chat": true,
         "show_tools": true,
-        "truncate_tools": true
+        "truncate_tools": true,
+        "enable_markup": true
       },
       "description": "Logger settings for the fast-agent application"
     }

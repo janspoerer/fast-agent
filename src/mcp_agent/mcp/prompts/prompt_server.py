@@ -335,7 +335,7 @@ def parse_args():
     parser.add_argument(
         "--transport",
         type=str,
-        choices=["stdio", "sse"],
+        choices=["stdio", "sse", "http"],
         default="stdio",
         help="Transport to use (default: stdio)",
     )
@@ -502,14 +502,22 @@ async def async_main() -> int:
         return await test_prompt(args.test, config)
 
     # Start the server with the specified transport
-    if config.transport == "stdio":
-        await mcp.run_stdio_async()
-    else:  # sse
+    if config.transport == "sse":  # sse
         # Set the host and port in settings before running the server
         mcp.settings.host = config.host
         mcp.settings.port = config.port
         logger.info(f"Starting SSE server on {config.host}:{config.port}")
         await mcp.run_sse_async()
+    elif config.transport == "http":
+        mcp.settings.host = config.host
+        mcp.settings.port = config.port
+        logger.info(f"Starting SSE server on {config.host}:{config.port}")
+        await mcp.run_streamable_http_async()
+    elif config.transport == "stdio":
+        await mcp.run_stdio_async()
+    else:
+        logger.error(f"Unknown transport: {config.transport}")
+        return 1
     return 0
 
 
