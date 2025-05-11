@@ -1,4 +1,3 @@
-import warnings
 from typing import List
 
 # Import necessary types and client from google.genai
@@ -32,12 +31,12 @@ DEFAULT_GOOGLE_MODEL = "gemini-2.0-flash"
 
 # Suppress this warning for now
 # TODO: Find out where we're passing null
-warnings.filterwarnings(
-    "ignore",
-    message="null is not a valid Type",
-    category=UserWarning,
-    module="google.genai._common",
-)
+# warnings.filterwarnings(
+#     "ignore",
+#     message="null is not a valid Type",
+#     category=UserWarning,
+#     module="google.genai._common",
+# )
 
 
 class GoogleAugmentedLLM(AugmentedLLM[types.Content, types.Content]):

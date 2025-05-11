@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Tuple
 # Import necessary types from google.genai
 from google.genai import types
 from mcp.types import (
+    BlobResourceContents,
     CallToolRequest,
     CallToolRequestParams,
     CallToolResult,
@@ -17,6 +18,7 @@ from mcp_agent.mcp.helpers.content_helpers import (
     get_image_data,
     get_text,
     is_image_content,
+    is_resource_content,
     is_text_content,
 )
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
@@ -75,22 +77,30 @@ class GoogleConverter:
         for message in messages:
             parts: List[types.Part] = []
             for part in message.content:
-                if isinstance(part, TextContent):
-                    parts.append(types.Part.from_text(text=part.text))
-                elif isinstance(part, ImageContent):
-                    # Assuming ImageContent has a 'data' attribute with bytes or a 'url' attribute
-                    # The google.genai library supports image bytes or GCS URIs.
-                    if hasattr(part, "data") and part.data:
-                        # Use the mime type provided in ImageContent
-                        parts.append(types.Part.from_bytes(data=part.data, mime_type=part.mimeType))
-                    elif hasattr(part, "url") and part.url:
-                        # Assumes the URL is a GCS URI if using Vertex AI, or needs file upload for Gemini API
-                        # Handling file uploads adds complexity and might be a separate step/consideration
-                        # For simplicity initially, might only support text and tool_code
-                        raise NotImplementedError(
-                            "ImageContent from URL not yet supported for google.genai conversion."
+                if is_text_content(part):
+                    parts.append(types.Part.from_text(text=get_text(part) or ""))
+                elif is_image_content(part):
+                    assert isinstance(part, ImageContent)
+                    image_bytes = base64.b64decode(get_image_data(part) or "")
+                    parts.append(types.Part.from_bytes(mime_type=part.mimeType, data=image_bytes))
+                elif is_resource_content(part):
+                    assert isinstance(part, EmbeddedResource)
+                    if "application/pdf" == part.resource.mimeType:
+                        assert isinstance(part.resource, BlobResourceContents)
+                        pdf_bytes = base64.b64decode(part.resource.blob)
+                        parts.append(
+                            types.Part.from_bytes(
+                                mime_type=part.resource.mimeType or "application/pdf",
+                                data=pdf_bytes,
+                            )
                         )
-                # Add other content types if needed (e.g., EmbeddedResource)
+                        pass
+                        # handle PDF
+                    else:
+                        types.Part.from_text(
+                            text="[Resource: {part.resource.uri}, MIME: {part.mimeType}]"
+                        )
+
             if parts:
                 # Map fast-agent roles to google.genai roles
                 # fast-agent: 'user', 'assistant', 'tool', 'system'
