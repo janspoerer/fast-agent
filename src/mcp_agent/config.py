@@ -60,7 +60,7 @@ class MCPServerSettings(BaseModel):
     description: str | None = None
     """The description of the server."""
 
-    transport: Literal["stdio", "sse"] = "stdio"
+    transport: Literal["stdio", "sse", "http"] = "stdio"
     """The transport mechanism."""
 
     command: str | None = None
@@ -92,6 +92,9 @@ class MCPServerSettings(BaseModel):
 
     sampling: MCPSamplingSettings | None = None
     """Sampling settings for this Client/Server pair"""
+
+    cwd: str | None = None
+    """Working directory for the executed server command."""
 
 
 class MCPSettings(BaseModel):
@@ -195,6 +198,16 @@ class OpenTelemetrySettings(BaseModel):
     """Sample rate for tracing (1.0 = sample everything)"""
 
 
+class TensorZeroSettings(BaseModel):
+    """
+    Settings for using TensorZero via its OpenAI-compatible API.
+    """
+
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
 class LoggerSettings(BaseModel):
     """
     Logger settings for the fast-agent application.
@@ -236,6 +249,8 @@ class LoggerSettings(BaseModel):
     """Show MCP Sever tool calls on the console"""
     truncate_tools: bool = True
     """Truncate display of long tool calls"""
+    enable_markup: bool = True
+    """Enable markup in console output. Disable for outputs that may conflict with rich console formatting"""
 
 
 class Settings(BaseSettings):
@@ -283,6 +298,9 @@ class Settings(BaseSettings):
 
     generic: GenericSettings | None = None
     """Settings for using Generic models in the fast-agent application"""
+
+    tensorzero: Optional[TensorZeroSettings] = None
+    """Settings for using TensorZero inference gateway"""
 
     logger: LoggerSettings | None = LoggerSettings()
     """Logger settings for the fast-agent application"""

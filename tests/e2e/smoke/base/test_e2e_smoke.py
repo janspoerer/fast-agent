@@ -312,7 +312,6 @@ async def test_basic_tool_calling(fast_agent, model_name):
     ],
 )
 async def test_tool_calls_no_args(fast_agent, model_name):
-    """Test that the agent can generate structured weather forecast data."""
     fast = fast_agent
 
     @fast.agent(
@@ -321,9 +320,76 @@ async def test_tool_calls_no_args(fast_agent, model_name):
         model=model_name,
         servers=["test_server"],
     )
-    async def weather_forecast():
+    async def tools_no_args():
         async with fast.run() as agent:
             response = await agent.send(Prompt.user("get the shirt colour"))
             assert "blue" in response
 
-    await weather_forecast()
+    await tools_no_args()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.e2e
+@pytest.mark.parametrize(
+    "model_name",
+    [
+        "deepseek",
+        "haiku35",
+        #       "gpt-4o",
+        #      "gpt-4.1",
+        #     "gpt-4.1-nano",
+        "gpt-4.1-mini",
+        "google.gemini-2.0-flash",
+        #       "openrouter.anthropic/claude-3.7-sonnet",
+    ],
+)
+async def test_tool_calls_no_args_typescript(fast_agent, model_name):
+    """Temporary test to diagnose typescript server issues"""
+    pass
+    # fast = fast_agent
+
+    # @fast.agent(
+    #     "shirt_colour",
+    #     instruction="You are a helpful assistant that provides information on shirt colours.",
+    #     model=model_name,
+    #     servers=["temp_issue_ts"],
+    # )
+    # async def tools_no_args_typescript():
+    #     async with fast.run() as agent:
+    #         response = await agent.send(
+    #             Prompt.user("tell me the response from the crashtest1 tool")
+    #         )
+    #         assert "did it work?" in response
+
+    # await tools_no_args_typescript()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.e2e
+@pytest.mark.parametrize(
+    "model_name",
+    [
+        "deepseek",
+        "haiku35",
+        "gpt-4.1",
+        "google.gemini-2.0-flash",
+    ],
+)
+async def test_server_has_hyphen(fast_agent, model_name):
+    """Test that the agent can generate structured weather forecast data."""
+    fast = fast_agent
+
+    @fast.agent(
+        "shirt_colour",
+        instruction="You are a helpful assistant that provides information on shirt colours.",
+        model=model_name,
+        servers=["hyphen-name"],
+    )
+    async def server_with_hyphen():
+        async with fast.run() as agent:
+            response = await agent.send("check the weather in new york")
+            assert "sunny" in response
+
+    await server_with_hyphen()

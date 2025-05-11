@@ -56,6 +56,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
         AugmentedLLM.PARAM_PARALLEL_TOOL_CALLS,
         AugmentedLLM.PARAM_USE_HISTORY,
         AugmentedLLM.PARAM_MAX_ITERATIONS,
+        AugmentedLLM.PARAM_TEMPLATE_VARS,
     }
 
     def __init__(self, provider: Provider = Provider.OPENAI, *args, **kwargs) -> None:
@@ -95,7 +96,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
             model=chosen_model,
             systemPrompt=self.instruction,
             parallel_tool_calls=True,
-            max_iterations=10,
+            max_iterations=20,
             use_history=True,
         )
 
@@ -143,7 +144,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
                 function={
                     "name": tool.name,
                     "description": tool.description if tool.description else "",
-                    "parameters": tool.inputSchema,
+                    "parameters": self.adjust_schema(tool.inputSchema),
                 },
             )
             for tool in response.tools
@@ -350,3 +351,15 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
             base_args, request_params, self.OPENAI_EXCLUDE_FIELDS.union(self.BASE_EXCLUDE_FIELDS)
         )
         return arguments
+
+    def adjust_schema(self, inputSchema: Dict) -> Dict:
+        # return inputSchema
+        if not Provider.OPENAI == self.provider:
+            return inputSchema
+
+        if "properties" in inputSchema:
+            return inputSchema
+
+        result = inputSchema.copy()
+        result["properties"] = {}
+        return result

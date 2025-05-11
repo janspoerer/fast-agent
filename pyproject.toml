@@ -1,12 +1,11 @@
 [project]
 name = "fast-agent-mcp"
-version = "0.2.19"
+version = "0.2.23"
 description = "Define, Prompt and Test MCP enabled Agents and Workflows"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
     { name = "Shaun Smith", email = "fastagent@llmindset.co.uk"},
-    { name = "Sarmad Qadri", email = "sarmad@lastmileai.dev" }
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -16,7 +15,7 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115.6",
-    "mcp==1.6.0",
+    "mcp>=1.8.0",
     "opentelemetry-distro>=0.50b0",
     "opentelemetry-exporter-otlp-proto-http>=1.29.0",
     "pydantic-settings>=2.7.0",
@@ -33,6 +32,7 @@ dependencies = [
     "opentelemetry-instrumentation-anthropic>=0.39.3",
     "google-genai",
     "opentelemetry-instrumentation-google-genai>=0.2b0",
+    "tensorzero>=2025.4.7",
 ]
 
 [project.optional-dependencies]
@@ -102,6 +102,7 @@ dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.1",
     "pytest-cov>=6.1.1",
+    "ipdb>=0.13.13",
 ]
 
 [project.scripts]
