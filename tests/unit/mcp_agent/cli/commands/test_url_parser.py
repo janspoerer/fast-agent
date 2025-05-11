@@ -69,6 +69,10 @@ class TestUrlParser:
         assert name.startswith("192_168_1_1_")
         assert "api_mcp" in name or len(name.split("_")) > 4
 
+        # Long domain name
+        name = generate_server_name("http://very.long.domain.name:14432/api/someendpoint/mcp")
+        assert "very_long_name" == name
+
     def test_parse_server_urls(self):
         """Test parsing multiple URLs."""
         urls = "http://example.com/mcp,https://api.test.com/sse,http://localhost:8080/api"
@@ -80,24 +84,40 @@ class TestUrlParser:
         assert result[0][0] == "example_com"
         assert result[0][1] == "http"
         assert result[0][2] == "http://example.com/mcp"
+        assert result[0][3] is None  # No auth headers
 
         # Second URL
         assert result[1][0] == "api_test_com"
         assert result[1][1] == "sse"
         assert result[1][2] == "https://api.test.com/sse"
+        assert result[1][3] is None  # No auth headers
 
         # Third URL
         assert result[2][1] == "http"
         assert result[2][2] == "http://localhost:8080/api/mcp"
+        assert result[2][3] is None  # No auth headers
 
         # Empty input
         assert parse_server_urls("") == []
 
+    def test_parse_server_urls_with_auth(self):
+        """Test parsing URLs with authentication token."""
+        urls = "http://example.com/mcp,https://api.test.com/sse"
+        auth_token = "test_token_123"
+        result = parse_server_urls(urls, auth_token)
+
+        assert len(result) == 2
+
+        # All URLs should have auth headers
+        for server_name, transport, url, headers in result:
+            assert headers is not None
+            assert headers == {"Authorization": "Bearer test_token_123"}
+
     def test_generate_server_configs(self):
         """Test generating server configurations from parsed URLs."""
         parsed_urls = [
-            ("example_com", "http", "http://example.com/mcp"),
-            ("api_test_com", "sse", "https://api.test.com/sse"),
+            ("example_com", "http", "http://example.com/mcp", None),
+            ("api_test_com", "sse", "https://api.test.com/sse", None),
         ]
 
         configs = generate_server_configs(parsed_urls)
@@ -106,6 +126,55 @@ class TestUrlParser:
 
         assert configs["example_com"]["transport"] == "http"
         assert configs["example_com"]["url"] == "http://example.com/mcp"
+        assert "headers" not in configs["example_com"]
 
         assert configs["api_test_com"]["transport"] == "sse"
         assert configs["api_test_com"]["url"] == "https://api.test.com/sse"
+        assert "headers" not in configs["api_test_com"]
+
+    def test_generate_server_configs_with_auth(self):
+        """Test generating server configurations with auth headers."""
+        auth_headers = {"Authorization": "Bearer test_token_123"}
+        parsed_urls = [
+            ("example_com", "http", "http://example.com/mcp", auth_headers),
+            ("api_test_com", "sse", "https://api.test.com/sse", auth_headers),
+        ]
+
+        configs = generate_server_configs(parsed_urls)
+
+        assert len(configs) == 2
+
+        # Check both configs have headers
+        for server_name, config in configs.items():
+            assert "headers" in config
+            assert config["headers"] == auth_headers
+
+    def test_generate_server_configs_with_name_collisions(self):
+        """Test handling of server name collisions."""
+        # Create a list of parsed URLs with the same server name
+        parsed_urls = [
+            (
+                "evalstate",
+                "sse",
+                "https://evalstate-parler-tts-expresso.hf.space/gradio_api/mcp/sse",
+                None,
+            ),
+            ("evalstate", "sse", "https://evalstate-shuttle.hf.space/gradio_api/mcp/sse", None),
+            ("evalstate", "http", "https://evalstate-another.hf.space/gradio_api/mcp", None),
+        ]
+
+        configs = generate_server_configs(parsed_urls)
+
+        # Should still have 3 configs despite name collisions
+        assert len(configs) == 3
+
+        # Should have unique keys by adding suffixes
+        expected_keys = {"evalstate", "evalstate_1", "evalstate_2"}
+        assert set(configs.keys()) == expected_keys
+
+        # Check that URLs are preserved correctly
+        urls = {config["url"] for config in configs.values()}
+        assert len(urls) == 3
+        assert "https://evalstate-parler-tts-expresso.hf.space/gradio_api/mcp/sse" in urls
+        assert "https://evalstate-shuttle.hf.space/gradio_api/mcp/sse" in urls
+        assert "https://evalstate-another.hf.space/gradio_api/mcp" in urls
