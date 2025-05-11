@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         "generic.llama3.2:latest",
         "openrouter.google/gemini-2.0-flash-001",
         "gemini2",
+        "gemini2",
     ],
 )
 async def test_basic_textual_prompting(fast_agent, model_name):
@@ -148,6 +149,7 @@ class WeatherForecast(BaseModel):
         "gpt-4.1-nano",
         "gpt-4.1-mini",
         "gemini2",
+        "gemini25",
     ],
 )
 async def test_structured_weather_forecast_openai_structured_api(fast_agent, model_name):

@@ -1,3 +1,4 @@
+import base64
 from typing import Any, Dict, List, Tuple
 
 # Import necessary types from google.genai
@@ -12,6 +13,12 @@ from mcp.types import (
 )
 
 from mcp_agent.core.request_params import RequestParams
+from mcp_agent.mcp.helpers.content_helpers import (
+    get_image_data,
+    get_text,
+    is_image_content,
+    is_text_content,
+)
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.tools.tool_definition import ToolDefinition
 
@@ -22,11 +29,30 @@ class GoogleConverter:
     """
 
     def _clean_schema_for_google(self, schema: Dict[str, Any]) -> Dict[str, Any]:
-        """Recursively removes 'additionalProperties' from a schema dictionary."""
+        """
+        Recursively removes unsupported JSON schema keywords for google.genai.types.Schema.
+        Specifically removes 'additionalProperties', '$schema', 'exclusiveMaximum', and 'exclusiveMinimum'.
+        """
         cleaned_schema = {}
+        unsupported_keys = {
+            "additionalProperties",
+            "$schema",
+            "exclusiveMaximum",
+            "exclusiveMinimum",
+        }
+        supported_string_formats = {"enum", "date-time"}
+
         for key, value in schema.items():
-            if key == "additionalProperties" or key == "$schema":
+            if key in unsupported_keys:
                 continue  # Skip this key
+
+            if (
+                key == "format"
+                and schema.get("type") == "string"
+                and value not in supported_string_formats
+            ):
+                continue  # Remove unsupported string formats
+
             if isinstance(value, dict):
                 cleaned_schema[key] = self._clean_schema_for_google(value)
             elif isinstance(value, list):
@@ -145,49 +171,52 @@ class GoogleConverter:
     ) -> List[types.Content]:
         """
         Converts a list of fast-agent tool results to google.genai types.Content
-        with role 'tool'.
+        with role 'tool'. Handles multimodal content in tool results.
         """
         google_tool_response_contents: List[types.Content] = []
         for tool_name, tool_result in tool_results:
-            # Assuming CallToolResult.content contains the response data
-            # This might need refinement based on the actual structure of CallToolResult
-            # For simplicity, assuming tool_result.content is a list of fast-agent content types
-            # and we need to represent this as a tool response in google.genai.
-            # The 'response' in types.Part.from_function_response is a dict.
-            # We need to structure the tool result content into a dictionary.
+            current_content_parts: List[types.Part] = []
+            textual_outputs: List[str] = []
+            media_parts: List[types.Part] = []
 
-            # A simple approach: convert the tool result content to a string representation
-            # A more robust approach: structure the tool result into a specific dictionary format
-            # that the model can understand. This depends on the expected tool response format.
+            for item in tool_result.content:
+                if is_text_content(item):
+                    textual_outputs.append(get_text(item))
+                elif is_image_content(item):
+                    # Decode base64 image data to bytes
+                    try:
+                        image_bytes = base64.b64decode(get_image_data(item))
+                        media_parts.append(
+                            types.Part.from_bytes(data=image_bytes, mime_type=item.mimeType)
+                        )
+                    except Exception as e:
+                        # Handle potential decoding errors
+                        textual_outputs.append(f"[Error processing image from tool result: {e}]")
+                # Add handling for other content types like EmbeddedResource if needed
+                # For now, treat other types as text or skip
 
-            # Structure the tool result content into a dictionary
-            tool_response_data: Dict[str, Any] = {}
-            for content_part in tool_result.content:
-                if isinstance(content_part, TextContent):
-                    if "text" not in tool_response_data:
-                        tool_response_data["text"] = []
-                    tool_response_data["text"].append(content_part.text)
-                elif isinstance(content_part, EmbeddedResource):
-                    if "resource" not in tool_response_data:
-                        tool_response_data["resource"] = []
-                    # Represent resource as a dictionary with uri and mimeType
-                    resource_data = {}
-                    if hasattr(content_part.resource, "uri") and content_part.resource.uri:
-                        resource_data["uri"] = content_part.resource.uri
-                    if (
-                        hasattr(content_part.resource, "mimeType")
-                        and content_part.resource.mimeType
-                    ):
-                        resource_data["mimeType"] = content_part.resource.mimeType
-                    # Add other relevant resource attributes if needed
-                    tool_response_data["resource"].append(resource_data)
-                # Add handling for other content types in CallToolResult if necessary
+            # Construct the function response payload with textual info
+            function_response_payload: Dict[str, Any] = {"tool_name": tool_name}
+            if textual_outputs:
+                function_response_payload["text_content"] = "\n".join(textual_outputs)
+            else:
+                # Provide a default status if no text output
+                function_response_payload["status"] = (
+                    "Tool executed. See attached content for results."
+                )
 
-            tool_response_part = types.Part.from_function_response(
-                name=tool_name, response=tool_response_data
+            # Create the main FunctionResponse part
+            fn_response_part = types.Part.from_function_response(
+                name=tool_name, response=function_response_payload
             )
+            current_content_parts.append(fn_response_part)
+
+            # Add media parts (images, etc.) as separate parts
+            current_content_parts.extend(media_parts)
+
+            # Create the final Content object for this tool result
             google_tool_response_contents.append(
-                types.Content(role="tool", parts=[tool_response_part])
+                types.Content(role="tool", parts=current_content_parts)
             )
 
         return google_tool_response_contents
