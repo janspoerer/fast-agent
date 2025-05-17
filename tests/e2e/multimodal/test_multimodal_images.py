@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         "gpt-4.1-mini",  # OpenAI model
         "sonnet",  # Anthropic model
         "gemini25",
+        "azure.gpt-4.1",
     ],
 )
 async def test_agent_with_image_prompt(fast_agent, model_name):
@@ -50,9 +51,11 @@ async def test_agent_with_image_prompt(fast_agent, model_name):
 @pytest.mark.parametrize(
     "model_name",
     [
-        "gpt-4.1-mini",  # OpenAI
-        "sonnet",  # Anthropic
+        "gpt-4.1-mini",  # OpenAI model
+        "sonnet",  # Anthropic model
         "gemini25",
+        "azure.gpt-4.1",
+        #    "gemini2",
     ],
 )
 async def test_agent_with_mcp_image(fast_agent, model_name):

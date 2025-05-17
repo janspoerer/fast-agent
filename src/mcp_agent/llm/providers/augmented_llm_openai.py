@@ -78,7 +78,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
                 self._reasoning_effort = self.context.config.openai.reasoning_effort
 
         # Determine if we're using a reasoning model
-        # TODO -- move this to model capabiltities, add o4.
+        # TODO -- move this to model capabilities, add o4.
         chosen_model = self.default_request_params.model if self.default_request_params else None
         self._reasoning = chosen_model and (
             chosen_model.startswith("o3") or chosen_model.startswith("o1")
@@ -274,7 +274,9 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
             # Calculate new conversation messages (excluding prompts)
             new_messages = messages[len(prompt_messages) :]
 
-            # Update conversation history
+            if system_prompt:
+                new_messages = new_messages[1:]
+
             self.history.set(new_messages)
 
         self._log_chat_finished(model=self.default_request_params.model)
@@ -323,7 +325,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
         return result
 
     def _prepare_api_request(
-        self, messages, tools, request_params: RequestParams
+        self, messages, tools: List[ChatCompletionToolParam] | None, request_params: RequestParams
     ) -> dict[str, str]:
         # Create base arguments dictionary
 
@@ -343,9 +345,8 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
             )
         else:
             base_args["max_tokens"] = request_params.maxTokens
-
-        if tools:
-            base_args["parallel_tool_calls"] = request_params.parallel_tool_calls
+            if tools:
+                base_args["parallel_tool_calls"] = request_params.parallel_tool_calls
 
         arguments: Dict[str, str] = self.prepare_provider_arguments(
             base_args, request_params, self.OPENAI_EXCLUDE_FIELDS.union(self.BASE_EXCLUDE_FIELDS)
@@ -354,7 +355,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
 
     def adjust_schema(self, inputSchema: Dict) -> Dict:
         # return inputSchema
-        if not Provider.OPENAI == self.provider:
+        if self.provider not in [Provider.OPENAI, Provider.AZURE]:
             return inputSchema
 
         if "properties" in inputSchema:
