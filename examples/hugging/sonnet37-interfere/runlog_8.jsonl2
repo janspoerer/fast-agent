@@ -1,0 +1,11 @@
+{"level":"ERROR","timestamp":"2025-05-20T22:58:03.111426","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 9439 Completion Tokens : 106"}
+{"level":"ERROR","timestamp":"2025-05-20T22:58:18.461118","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 13742 Completion Tokens : 657"}
+{"level":"ERROR","timestamp":"2025-05-20T22:58:24.402139","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 14408 Completion Tokens : 105"}
+{"level":"ERROR","timestamp":"2025-05-20T22:58:38.143231","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 14531 Completion Tokens : 96"}
+{"level":"ERROR","timestamp":"2025-05-20T22:58:52.246538","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 17633 Completion Tokens : 113"}
+{"level":"ERROR","timestamp":"2025-05-20T22:59:19.154417","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 18121 Completion Tokens : 948"}
+{"level":"ERROR","timestamp":"2025-05-20T22:59:32.164250","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 19077 Completion Tokens : 98"}
+{"level":"ERROR","timestamp":"2025-05-20T22:59:44.707746","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 19671 Completion Tokens : 100"}
+{"level":"ERROR","timestamp":"2025-05-20T23:00:07.991269","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 20013 Completion Tokens : 109"}
+{"level":"ERROR","timestamp":"2025-05-20T23:00:20.039327","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 20156 Completion Tokens : 103"}
+{"level":"ERROR","timestamp":"2025-05-20T23:00:40.623809","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 21184 Completion Tokens : 468"}

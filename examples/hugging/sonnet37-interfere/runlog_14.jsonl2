@@ -1,0 +1,13 @@
+{"level":"ERROR","timestamp":"2025-05-20T22:16:30.747818","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 9439 Completion Tokens : 108"}
+{"level":"ERROR","timestamp":"2025-05-20T22:16:46.835412","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 13744 Completion Tokens : 689"}
+{"level":"ERROR","timestamp":"2025-05-20T22:16:53.480545","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 14442 Completion Tokens : 106"}
+{"level":"ERROR","timestamp":"2025-05-20T22:17:02.439118","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 14566 Completion Tokens : 93"}
+{"level":"ERROR","timestamp":"2025-05-20T22:17:11.831866","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 17665 Completion Tokens : 100"}
+{"level":"ERROR","timestamp":"2025-05-20T22:17:17.043748","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 17783 Completion Tokens : 104"}
+{"level":"ERROR","timestamp":"2025-05-20T22:17:35.410824","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 18262 Completion Tokens : 972"}
+{"level":"ERROR","timestamp":"2025-05-20T22:17:52.321868","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 19242 Completion Tokens : 98"}
+{"level":"ERROR","timestamp":"2025-05-20T22:17:58.665129","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 19836 Completion Tokens : 93"}
+{"level":"ERROR","timestamp":"2025-05-20T22:18:13.579019","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 20171 Completion Tokens : 106"}
+{"level":"ERROR","timestamp":"2025-05-20T22:18:21.738639","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 20780 Completion Tokens : 96"}
+{"level":"ERROR","timestamp":"2025-05-20T22:18:32.254061","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 20910 Completion Tokens : 97"}
+{"level":"ERROR","timestamp":"2025-05-20T22:18:45.494296","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 21517 Completion Tokens : 557"}

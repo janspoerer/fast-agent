@@ -1,0 +1,13 @@
+{"level":"ERROR","timestamp":"2025-05-20T21:54:13.005554","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 1088 Completion Tokens : 89"}
+{"level":"ERROR","timestamp":"2025-05-20T21:54:29.367749","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 5374 Completion Tokens : 828"}
+{"level":"ERROR","timestamp":"2025-05-20T21:54:33.201030","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 6211 Completion Tokens : 101"}
+{"level":"ERROR","timestamp":"2025-05-20T21:54:35.758316","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 6330 Completion Tokens : 88"}
+{"level":"ERROR","timestamp":"2025-05-20T21:54:42.316896","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 9424 Completion Tokens : 87"}
+{"level":"ERROR","timestamp":"2025-05-20T21:54:46.199500","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 9529 Completion Tokens : 100"}
+{"level":"ERROR","timestamp":"2025-05-20T21:55:03.008807","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 9913 Completion Tokens : 898"}
+{"level":"ERROR","timestamp":"2025-05-20T21:55:07.541020","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 10819 Completion Tokens : 81"}
+{"level":"ERROR","timestamp":"2025-05-20T21:55:10.988313","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 11468 Completion Tokens : 71"}
+{"level":"ERROR","timestamp":"2025-05-20T21:55:15.522025","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 11781 Completion Tokens : 64"}
+{"level":"ERROR","timestamp":"2025-05-20T21:55:18.698600","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 11879 Completion Tokens : 65"}
+{"level":"ERROR","timestamp":"2025-05-20T21:55:22.067529","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 12100 Completion Tokens : 64"}
+{"level":"ERROR","timestamp":"2025-05-20T21:55:34.031581","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 13112 Completion Tokens : 400"}

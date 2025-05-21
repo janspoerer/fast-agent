@@ -1,0 +1,43 @@
+otel:
+  enabled: true
+
+logger:
+  level: error
+  type: file
+  path: "runlog.jsonl"
+
+mcp:
+  servers:
+    hf_mcp_complete:
+      command: "uv"
+      args: ["run", "hf_mcp.py"]
+      env:
+        HF_TOKEN: xxx
+    hf_mcp_concise:
+      command: "uv"
+      args: ["run", "hf_mcp_concise.py"]
+      env:
+        HF_TOKEN: xxx
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    github:
+      command: "docker"
+      args:
+        [
+          "run",
+          "-i",
+          "--rm",
+          "-e",
+          "GITHUB_PERSONAL_ACCESS_TOKEN",
+          "ghcr.io/github/github-mcp-server",
+        ]
+      env:
+        GITHUB_PERSONAL_ACCESS_TOKEN:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+
+    hf_search_tools:
+      transport: "http"
+      url: "https://evalstate-hf-mcp-server.hf.space/mcp"

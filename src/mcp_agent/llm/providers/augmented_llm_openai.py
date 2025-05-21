@@ -171,6 +171,13 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
                 data=response,
             )
 
+            self.logger.error(
+                f"Prompt Tokens: {response.usage.prompt_tokens} Completion Tokens : {response.usage.completion_tokens}"
+            )
+            print(
+                f"Prompt Tokens: {response.usage.prompt_tokens} Completion Tokens : {response.usage.completion_tokens}"
+            )
+
             if isinstance(response, AuthenticationError):
                 raise ProviderKeyError(
                     "Rejected OpenAI API key",

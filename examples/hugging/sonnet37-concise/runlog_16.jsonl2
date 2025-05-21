@@ -1,0 +1,13 @@
+{"level":"ERROR","timestamp":"2025-05-20T22:00:59.564714","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 1088 Completion Tokens : 93"}
+{"level":"ERROR","timestamp":"2025-05-20T22:01:23.127707","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 5378 Completion Tokens : 902"}
+{"level":"ERROR","timestamp":"2025-05-20T22:01:27.240120","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 6289 Completion Tokens : 105"}
+{"level":"ERROR","timestamp":"2025-05-20T22:01:30.786718","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 6412 Completion Tokens : 95"}
+{"level":"ERROR","timestamp":"2025-05-20T22:01:35.506794","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 9513 Completion Tokens : 108"}
+{"level":"ERROR","timestamp":"2025-05-20T22:01:41.312614","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 9996 Completion Tokens : 108"}
+{"level":"ERROR","timestamp":"2025-05-20T22:01:57.716138","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 10122 Completion Tokens : 1017"}
+{"level":"ERROR","timestamp":"2025-05-20T22:02:04.293992","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 11147 Completion Tokens : 108"}
+{"level":"ERROR","timestamp":"2025-05-20T22:02:07.498888","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 11751 Completion Tokens : 96"}
+{"level":"ERROR","timestamp":"2025-05-20T22:02:13.389457","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 12089 Completion Tokens : 97"}
+{"level":"ERROR","timestamp":"2025-05-20T22:02:19.190397","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 13121 Completion Tokens : 93"}
+{"level":"ERROR","timestamp":"2025-05-20T22:02:22.877169","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 13248 Completion Tokens : 98"}
+{"level":"ERROR","timestamp":"2025-05-20T22:02:34.446504","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 13829 Completion Tokens : 516"}

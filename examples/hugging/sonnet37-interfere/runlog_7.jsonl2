@@ -1,0 +1,14 @@
+{"level":"ERROR","timestamp":"2025-05-20T22:54:47.446874","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 9439 Completion Tokens : 95"}
+{"level":"ERROR","timestamp":"2025-05-20T22:55:11.071651","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 13731 Completion Tokens : 714"}
+{"level":"ERROR","timestamp":"2025-05-20T22:55:26.734925","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 14454 Completion Tokens : 114"}
+{"level":"ERROR","timestamp":"2025-05-20T22:55:33.873955","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 14586 Completion Tokens : 95"}
+{"level":"ERROR","timestamp":"2025-05-20T22:55:39.395677","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 16764 Completion Tokens : 80"}
+{"level":"ERROR","timestamp":"2025-05-20T22:55:52.935370","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 17218 Completion Tokens : 105"}
+{"level":"ERROR","timestamp":"2025-05-20T22:55:57.647095","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 17341 Completion Tokens : 92"}
+{"level":"ERROR","timestamp":"2025-05-20T22:56:19.980861","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 17451 Completion Tokens : 957"}
+{"level":"ERROR","timestamp":"2025-05-20T22:56:25.483565","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 18416 Completion Tokens : 90"}
+{"level":"ERROR","timestamp":"2025-05-20T22:56:38.967123","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 19002 Completion Tokens : 77"}
+{"level":"ERROR","timestamp":"2025-05-20T22:56:47.980038","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 19321 Completion Tokens : 94"}
+{"level":"ERROR","timestamp":"2025-05-20T22:57:05.528558","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 19448 Completion Tokens : 77"}
+{"level":"ERROR","timestamp":"2025-05-20T22:57:10.817100","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 20472 Completion Tokens : 83"}
+{"level":"ERROR","timestamp":"2025-05-20T22:57:37.026671","namespace":"mcp_agent.llm.augmented_llm","message":"Prompt Tokens: 20710 Completion Tokens : 474"}

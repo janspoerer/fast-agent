@@ -158,6 +158,13 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             response = executor_result[0]
 
+            self.logger.error(
+                f"Prompt Tokens: {response.usage.input_tokens} Completion Tokens : {response.usage.output_tokens}"
+            )
+            print(
+                f"Prompt Tokens: {response.usage.input_tokens} Completion Tokens : {response.usage.output_tokens}"
+            )
+
             if isinstance(response, AuthenticationError):
                 raise ProviderKeyError(
                     "Invalid Anthropic API key",
