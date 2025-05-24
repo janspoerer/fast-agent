@@ -1,3 +1,7 @@
+"""
+Type definitions for LLM providers.
+"""
+
 from enum import Enum
 
 

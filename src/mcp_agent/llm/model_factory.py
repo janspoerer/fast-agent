@@ -63,6 +63,12 @@ class ModelFactory:
         "high": ReasoningEffort.HIGH,
     }
 
+    """
+    TODO -- add context window size information for display/management
+    TODO -- add audio supporting got-4o-audio-preview
+    TODO -- bring model parameter configuration here
+    Mapping of model names to their default providers
+    """
     DEFAULT_PROVIDERS = {
         "passthrough": Provider.FAST_AGENT,
         "playback": Provider.FAST_AGENT,
@@ -109,6 +115,7 @@ class ModelFactory:
         "gemini25pro": "gemini-2.5-pro-preview-03-25",
     }
 
+    # Mapping of providers to their LLM classes
     PROVIDER_CLASSES: Dict[Provider, LLMClass] = {
         Provider.ANTHROPIC: AnthropicAugmentedLLM,
         Provider.OPENAI: OpenAIAugmentedLLM,
@@ -122,12 +129,15 @@ class ModelFactory:
         Provider.AZURE: AzureOpenAIAugmentedLLM,
     }
 
+    # Mapping of special model names to their specific LLM classes
+    # This overrides the provider-based class selection
     MODEL_SPECIFIC_CLASSES: Dict[str, LLMClass] = {
         "playback": PlaybackLLM,
     }
 
     @classmethod
     def parse_model_string(cls, model_string: str) -> ModelConfig:
+        """Parse a model string into a ModelConfig object"""
         model_string = cls.MODEL_ALIASES.get(model_string, model_string)
         parts = model_string.split(".")
 
@@ -138,8 +148,7 @@ class ModelFactory:
         # Check for reasoning effort first (last part)
         if len(parts) > 1 and parts[-1].lower() in cls.EFFORT_MAP:
             reasoning_effort = cls.EFFORT_MAP[parts[-1].lower()]
-            # Remove effort from parts list for provider/model name determination
-            parts_for_provider_model = parts[:-1]
+            # Remove effort from parts list for provider/model name determination            parts_for_provider_model = parts[:-1]
         else:
             parts_for_provider_model = parts[:]
 
@@ -187,6 +196,16 @@ class ModelFactory:
     def create_factory(
         cls, model_string: str, request_params: Optional[RequestParams] = None
     ) -> Callable[..., AugmentedLLMProtocol]:
+        """
+        Creates a factory function that follows the attach_llm protocol.
+
+        Args:
+            model_string: The model specification string (e.g. "gpt-4.1")
+            request_params: Optional parameters to configure LLM behavior
+
+        Returns:
+            A callable that takes an agent parameter and returns an LLM instance
+        """
         config = cls.parse_model_string(model_string)
 
         # Ensure provider is valid before trying to access PROVIDER_CLASSES with it
