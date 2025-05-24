@@ -13,6 +13,7 @@ from mcp_agent.llm.providers.augmented_llm_anthropic import AnthropicAugmentedLL
 from mcp_agent.llm.providers.augmented_llm_azure import AzureOpenAIAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_deepseek import DeepSeekAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_generic import GenericAugmentedLLM
+from mcp_agent.llm.providers.augmented_llm_google import GoogleAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_google_native import GoogleNativeAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_openrouter import OpenRouterAugmentedLLM
@@ -92,9 +93,9 @@ class ModelFactory:
         "claude-3-opus-20240229": Provider.ANTHROPIC,
         "claude-3-opus-latest": Provider.ANTHROPIC,
         "deepseek-chat": Provider.DEEPSEEK,
-        "gemini-2.0-flash": Provider.GOOGLE_NATIVE,
-        "gemini-2.5-flash-preview-04-17": Provider.GOOGLE_NATIVE,
-        "gemini-2.5-pro-preview-03-25": Provider.GOOGLE_NATIVE,
+        "gemini-2.0-flash": Provider.GOOGLE,
+        "gemini-2.5-flash-preview-05-20": Provider.GOOGLE,
+        "gemini-2.5-pro-preview-05-06": Provider.GOOGLE,
         #        "deepseek-reasoner": Provider.DEEPSEEK, reinstate on release
     }
 
@@ -111,8 +112,8 @@ class ModelFactory:
         "deepseekv3": "deepseek-chat",
         "deepseek": "deepseek-chat",
         "gemini2": "gemini-2.0-flash",
-        "gemini25": "gemini-2.5-flash-preview-04-17",
-        "gemini25pro": "gemini-2.5-pro-preview-03-25",
+        "gemini25": "gemini-2.5-flash-preview-05-20",
+        "gemini25pro": "gemini-2.5-pro-preview-05-06",
     }
 
     # Mapping of providers to their LLM classes
@@ -122,8 +123,8 @@ class ModelFactory:
         Provider.FAST_AGENT: PassthroughLLM,
         Provider.DEEPSEEK: DeepSeekAugmentedLLM,
         Provider.GENERIC: GenericAugmentedLLM,
-        # Provider.GOOGLE: GoogleAugmentedLLM,  # type: ignore # This is the old one, will be removed later
-        Provider.GOOGLE_NATIVE: GoogleNativeAugmentedLLM,  # type: ignore
+        Provider.GOOGLE: GoogleAugmentedLLM,
+        Provider.GOOGLE_NATIVE: GoogleNativeAugmentedLLM,
         Provider.OPENROUTER: OpenRouterAugmentedLLM,
         Provider.TENSORZERO: TensorZeroAugmentedLLM,
         Provider.AZURE: AzureOpenAIAugmentedLLM,
