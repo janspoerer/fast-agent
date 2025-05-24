@@ -76,44 +76,69 @@ class GoogleConverter:
         google_contents: List[types.Content] = []
         for message in messages:
             parts: List[types.Part] = []
-            for part in message.content:
-                if is_text_content(part):
-                    parts.append(types.Part.from_text(text=get_text(part) or ""))
-                elif is_image_content(part):
-                    assert isinstance(part, ImageContent)
-                    image_bytes = base64.b64decode(get_image_data(part) or "")
-                    parts.append(types.Part.from_bytes(mime_type=part.mimeType, data=image_bytes))
-                elif is_resource_content(part):
-                    assert isinstance(part, EmbeddedResource)
-                    if "application/pdf" == part.resource.mimeType:
-                        assert isinstance(part.resource, BlobResourceContents)
-                        pdf_bytes = base64.b64decode(part.resource.blob)
+            for part_content in message.content:  # renamed part to part_content to avoid conflict
+                if is_text_content(part_content):
+                    parts.append(types.Part.from_text(text=get_text(part_content) or ""))
+                elif is_image_content(part_content):
+                    assert isinstance(part_content, ImageContent)
+                    image_bytes = base64.b64decode(get_image_data(part_content) or "")
+                    parts.append(
+                        types.Part.from_bytes(mime_type=part_content.mimeType, data=image_bytes)
+                    )
+                elif is_resource_content(part_content):
+                    assert isinstance(part_content, EmbeddedResource)
+                    if (
+                        "application/pdf" == part_content.resource.mimeType
+                        and hasattr(part_content.resource, "blob")
+                        and isinstance(part_content.resource, BlobResourceContents)
+                    ):
+                        pdf_bytes = base64.b64decode(part_content.resource.blob)
                         parts.append(
                             types.Part.from_bytes(
-                                mime_type=part.resource.mimeType or "application/pdf",
+                                mime_type=part_content.resource.mimeType or "application/pdf",
                                 data=pdf_bytes,
                             )
                         )
-                        pass
-                        # handle PDF
                     else:
-                        types.Part.from_text(
-                            text="[Resource: {part.resource.uri}, MIME: {part.mimeType}]"
-                        )
+                        # Check if the resource itself has text content
+                        resource_text = None
+                        if hasattr(part_content.resource, "text"):  # Direct text attribute
+                            resource_text = part_content.resource.text
+                        # Example: if EmbeddedResource wraps a TextContent-like object in its 'resource' field
+                        elif (
+                            hasattr(part_content.resource, "type")
+                            and part_content.resource.type == "text"
+                            and hasattr(part_content.resource, "text")
+                        ):
+                            resource_text = get_text(part_content.resource)
+
+                        if resource_text is not None:
+                            parts.append(types.Part.from_text(text=resource_text))
+                        else:
+                            # Fallback for other binary types or types without direct text
+                            uri_str = (
+                                part_content.resource.uri
+                                if hasattr(part_content.resource, "uri")
+                                else "unknown_uri"
+                            )
+                            mime_str = (
+                                part_content.resource.mimeType
+                                if hasattr(part_content.resource, "mimeType")
+                                else "unknown_mime"
+                            )
+                            parts.append(
+                                types.Part.from_text(
+                                    text=f"[Resource: {uri_str}, MIME: {mime_str}]"
+                                )
+                            )
 
             if parts:
-                # Map fast-agent roles to google.genai roles
-                # fast-agent: 'user', 'assistant', 'tool', 'system'
-                # google.genai: 'user', 'model', 'tool'
-                # System instructions are handled separately in GenerateContentConfig
                 google_role = (
                     "user"
                     if message.role == "user"
                     else ("model" if message.role == "assistant" else "tool")
-                )  # Mapping tool to tool role
-
+                )
                 google_contents.append(types.Content(role=google_role, parts=parts))
-
         return google_contents
 
     def convert_to_google_tools(self, tools: List[ToolDefinition]) -> List[types.Tool]:
@@ -122,16 +147,11 @@ class GoogleConverter:
         """
         google_tools: List[types.Tool] = []
         for tool in tools:
-            # Assuming ToolDefinition.inputSchema is a dict representing a JSON schema
-            # Clean the schema to remove 'additionalProperties' which google.genai.types.Schema might not support
             cleaned_input_schema = self._clean_schema_for_google(tool.inputSchema)
-
             function_declaration = types.FunctionDeclaration(
                 name=tool.name,
                 description=tool.description if tool.description else "",
-                parameters=types.Schema(
-                    **cleaned_input_schema
-                ),  # Convert cleaned JSON schema dict to google.genai Schema
+                parameters=types.Schema(**cleaned_input_schema),
             )
             google_tools.append(types.Tool(function_declarations=[function_declaration]))
         return google_tools
@@ -150,16 +170,12 @@ class GoogleConverter:
             if part.text:
                 fast_agent_parts.append(TextContent(type="text", text=part.text))
             elif part.function_call:
-                # This part converts a function_call from the model's response
-                # into a CallToolRequestParams object for fast-agent's tool execution.
                 fast_agent_parts.append(
                     CallToolRequestParams(
                         name=part.function_call.name,
-                        arguments=part.function_call.args,  # args is already a dict
+                        arguments=part.function_call.args,
                     )
                 )
-            # Add handling for other part types like file_data (images), etc.
-            # This might require fetching data from URIs if applicable.
         return fast_agent_parts
 
     def convert_from_google_function_call(
@@ -169,10 +185,10 @@ class GoogleConverter:
         Converts a single google.genai types.FunctionCall to a fast-agent CallToolRequest.
         """
         return CallToolRequest(
-            method="tools/call",  # Standard method for tool calls in fast-agent
+            method="tools/call",
             params=CallToolRequestParams(
                 name=function_call.name,
-                arguments=function_call.args,  # args is already a dict
+                arguments=function_call.args,
             ),
         )
 
@@ -191,44 +207,87 @@ class GoogleConverter:
 
             for item in tool_result.content:
                 if is_text_content(item):
-                    textual_outputs.append(get_text(item))
+                    textual_outputs.append(get_text(item) or "")  # Ensure no None is added
                 elif is_image_content(item):
-                    # Decode base64 image data to bytes
+                    assert isinstance(item, ImageContent)
                     try:
-                        image_bytes = base64.b64decode(get_image_data(item))
+                        image_bytes = base64.b64decode(get_image_data(item) or "")
                         media_parts.append(
                             types.Part.from_bytes(data=image_bytes, mime_type=item.mimeType)
                         )
                     except Exception as e:
-                        # Handle potential decoding errors
                         textual_outputs.append(f"[Error processing image from tool result: {e}]")
-                # Add handling for other content types like EmbeddedResource if needed
-                # For now, treat other types as text or skip
+                elif is_resource_content(item):
+                    assert isinstance(item, EmbeddedResource)
+                    if (
+                        "application/pdf" == item.resource.mimeType
+                        and hasattr(item.resource, "blob")
+                        and isinstance(item.resource, BlobResourceContents)
+                    ):
+                        try:
+                            pdf_bytes = base64.b64decode(item.resource.blob)
+                            media_parts.append(
+                                types.Part.from_bytes(
+                                    data=pdf_bytes,
+                                    mime_type=item.resource.mimeType or "application/pdf",
+                                )
+                            )
+                        except Exception as e:
+                            textual_outputs.append(f"[Error processing PDF from tool result: {e}]")
+                    else:
+                        # Check if the resource itself has text content
+                        resource_text = None
+                        if hasattr(item.resource, "text"):  # Direct text attribute
+                            resource_text = item.resource.text
+                        # Example: if EmbeddedResource wraps a TextContent-like object in its 'resource' field
+                        elif (
+                            hasattr(item.resource, "type")
+                            and item.resource.type == "text"
+                            and hasattr(item.resource, "text")
+                        ):
+                            resource_text = get_text(item.resource)
 
-            # Construct the function response payload with textual info
+                        if resource_text is not None:
+                            textual_outputs.append(resource_text)
+                        else:
+                            uri_str = (
+                                item.resource.uri
+                                if hasattr(item.resource, "uri")
+                                else "unknown_uri"
+                            )
+                            mime_str = (
+                                item.resource.mimeType
+                                if hasattr(item.resource, "mimeType")
+                                else "unknown_mime"
+                            )
+                            textual_outputs.append(
+                                f"[Unhandled Resource in Tool: {uri_str}, MIME: {mime_str}]"
+                            )
+                # Add handling for other content types if needed, for now they are skipped or become unhandled resource text
+
             function_response_payload: Dict[str, Any] = {"tool_name": tool_name}
             if textual_outputs:
                 function_response_payload["text_content"] = "\n".join(textual_outputs)
-            else:
-                # Provide a default status if no text output
-                function_response_payload["status"] = (
-                    "Tool executed. See attached content for results."
+
+            # Only add media_parts if there are some, otherwise Gemini might error on empty parts for function response
+            if media_parts:
+                # Create the main FunctionResponse part
+                fn_response_part = types.Part.from_function_response(
+                    name=tool_name, response=function_response_payload
                 )
+                current_content_parts.append(fn_response_part)
+                current_content_parts.extend(
+                    media_parts
+                )  # Add media parts after the main response part
+            else:  # If no media parts, the textual output (if any) is the sole content of the function response
+                fn_response_part = types.Part.from_function_response(
+                    name=tool_name, response=function_response_payload
+                )
+                current_content_parts.append(fn_response_part)
 
-            # Create the main FunctionResponse part
-            fn_response_part = types.Part.from_function_response(
-                name=tool_name, response=function_response_payload
-            )
-            current_content_parts.append(fn_response_part)
-
-            # Add media parts (images, etc.) as separate parts
-            current_content_parts.extend(media_parts)
-
-            # Create the final Content object for this tool result
             google_tool_response_contents.append(
                 types.Content(role="tool", parts=current_content_parts)
             )
-
         return google_tool_response_contents
 
     def convert_request_params_to_google_config(
@@ -238,12 +297,9 @@ class GoogleConverter:
         Converts fast-agent RequestParams to google.genai types.GenerateContentConfig.
         """
         config_args: Dict[str, Any] = {}
-
-        # Map common parameters
         if request_params.temperature is not None:
             config_args["temperature"] = request_params.temperature
         if request_params.maxTokens is not None:
-            # google.genai uses max_output_tokens
             config_args["max_output_tokens"] = request_params.maxTokens
         if hasattr(request_params, "topK") and request_params.topK is not None:
             config_args["top_k"] = request_params.topK
@@ -261,19 +317,8 @@ class GoogleConverter:
             and request_params.frequencyPenalty is not None
         ):
             config_args["frequency_penalty"] = request_params.frequencyPenalty
-
-        # System instruction
         if request_params.systemPrompt is not None:
             config_args["system_instruction"] = request_params.systemPrompt
-
-        # Tool configuration will be handled in _google_completion based on available tools and parallel_tool_calls
-
-        # Safety settings - assuming safety settings are part of request_params or global config
-        # If they are in request_params, they need to be mapped to types.SafetySetting
-        # if hasattr(request_params, 'safety_settings') and request_params.safety_settings:
-        #     config_args['safety_settings'] = self.convert_to_google_safety_settings(request_params.safety_settings)
-
-        # Create the GenerateContentConfig object
         return types.GenerateContentConfig(**config_args)
 
     def convert_from_google_content_list(
@@ -288,54 +333,29 @@ class GoogleConverter:
         """
         Converts a single google.genai types.Content to a fast-agent PromptMessageMultipart.
         """
-        # If the content is a model's function call, create an assistant message with empty content
-        # as tool call requests are handled separately for execution and not stored in history content.
         if content.role == "model" and any(part.function_call for part in content.parts):
-            # Map google.genai 'model' role to fast-agent 'assistant' role
             return PromptMessageMultipart(role="assistant", content=[])
 
         fast_agent_parts: List[
             TextContent | ImageContent | EmbeddedResource | CallToolRequestParams
         ] = []
-
         for part in content.parts:
             if part.text:
                 fast_agent_parts.append(TextContent(type="text", text=part.text))
             elif part.function_response:
-                # Convert function response to TextContent for history
-                # Assuming function_response.response is a dict, convert it to a string
                 response_text = str(part.function_response.response)
                 fast_agent_parts.append(TextContent(type="text", text=response_text))
             elif part.file_data:
-                # Handle file_data (e.g., images from GCS URIs)
-                # This requires fetching the content from the URI.
-                # For now, we'll represent this as an EmbeddedResource with the URI.
-                # Actual content fetching might happen elsewhere or be a future enhancement.
                 fast_agent_parts.append(
                     EmbeddedResource(
                         type="resource",
-                        resource=TextContent(  # Using TextContent for simplicity, might need a dedicated FileContent type
+                        resource=TextContent(
                             uri=part.file_data.file_uri,
                             mimeType=part.file_data.mime_type,
-                            text=f"[Resource: {part.file_data.file_uri}, MIME: {part.file_data.mime_type}]",  # Placeholder text
+                            text=f"[Resource: {part.file_data.file_uri}, MIME: {part.file_data.mime_type}]",
                         ),
                     )
                 )
-            # Add handling for other part types if needed
 
-        # Map google.genai roles to fast-agent roles for PromptMessageMultipart history
-        # google.genai: 'user', 'model', 'tool'
-        # fast-agent: 'user', 'assistant', 'tool', 'system'
-        # 'system' role is not expected in model responses, handled in config.
-        if content.role == "user":
-            fast_agent_role = "user"
-        else:
-            # Map 'model' and 'tool' roles to 'assistant' for history
-            fast_agent_role = "assistant"
-
+        fast_agent_role = "user" if content.role == "user" else "assistant"
         return PromptMessageMultipart(role=fast_agent_role, content=fast_agent_parts)
-
-    # Helper method if safety settings need conversion
-    # def convert_to_google_safety_settings(self, safety_settings_data) -> List[types.SafetySetting]:
-    #      # Conversion logic from fast-agent safety settings format to google.genai types.SafetySetting
-    #      pass

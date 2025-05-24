@@ -39,7 +39,7 @@ DEFAULT_GOOGLE_MODEL = "gemini-2.0-flash"
 # )
 
 
-class GoogleAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
+class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
     """
     Google LLM provider using the native google.genai library.
     """

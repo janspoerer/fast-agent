@@ -13,7 +13,7 @@ from mcp_agent.llm.providers.augmented_llm_anthropic import AnthropicAugmentedLL
 from mcp_agent.llm.providers.augmented_llm_azure import AzureOpenAIAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_deepseek import DeepSeekAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_generic import GenericAugmentedLLM
-from mcp_agent.llm.providers.augmented_llm_google import GoogleAugmentedLLM
+from mcp_agent.llm.providers.augmented_llm_google_native import GoogleNativeAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_openrouter import OpenRouterAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_tensorzero import TensorZeroAugmentedLLM
@@ -31,6 +31,9 @@ LLMClass = Union[
     Type[DeepSeekAugmentedLLM],
     Type[OpenRouterAugmentedLLM],
     Type[TensorZeroAugmentedLLM],
+    Type[GoogleNativeAugmentedLLM],
+    Type[GenericAugmentedLLM],
+    Type[AzureOpenAIAugmentedLLM],
 ]
 
 
@@ -60,10 +63,6 @@ class ModelFactory:
         "high": ReasoningEffort.HIGH,
     }
 
-    # TODO -- add context window size information for display/management
-    # TODO -- add audio supporting got-4o-audio-preview
-    # TODO -- bring model parameter configuration here
-    # Mapping of model names to their default providers
     DEFAULT_PROVIDERS = {
         "passthrough": Provider.FAST_AGENT,
         "playback": Provider.FAST_AGENT,
@@ -87,9 +86,9 @@ class ModelFactory:
         "claude-3-opus-20240229": Provider.ANTHROPIC,
         "claude-3-opus-latest": Provider.ANTHROPIC,
         "deepseek-chat": Provider.DEEPSEEK,
-        "gemini-2.0-flash": Provider.GOOGLE,
-        "gemini-2.5-flash-preview-04-17": Provider.GOOGLE,
-        "gemini-2.5-pro-preview-03-25": Provider.GOOGLE,
+        "gemini-2.0-flash": Provider.GOOGLE_NATIVE,
+        "gemini-2.5-flash-preview-04-17": Provider.GOOGLE_NATIVE,
+        "gemini-2.5-pro-preview-03-25": Provider.GOOGLE_NATIVE,
         #        "deepseek-reasoner": Provider.DEEPSEEK, reinstate on release
     }
 
@@ -110,108 +109,115 @@ class ModelFactory:
         "gemini25pro": "gemini-2.5-pro-preview-03-25",
     }
 
-    # Mapping of providers to their LLM classes
     PROVIDER_CLASSES: Dict[Provider, LLMClass] = {
         Provider.ANTHROPIC: AnthropicAugmentedLLM,
         Provider.OPENAI: OpenAIAugmentedLLM,
         Provider.FAST_AGENT: PassthroughLLM,
         Provider.DEEPSEEK: DeepSeekAugmentedLLM,
         Provider.GENERIC: GenericAugmentedLLM,
-        Provider.GOOGLE: GoogleAugmentedLLM,  # type: ignore
+        # Provider.GOOGLE: GoogleAugmentedLLM,  # type: ignore # This is the old one, will be removed later
+        Provider.GOOGLE_NATIVE: GoogleNativeAugmentedLLM,  # type: ignore
         Provider.OPENROUTER: OpenRouterAugmentedLLM,
         Provider.TENSORZERO: TensorZeroAugmentedLLM,
         Provider.AZURE: AzureOpenAIAugmentedLLM,
     }
 
-    # Mapping of special model names to their specific LLM classes
-    # This overrides the provider-based class selection
     MODEL_SPECIFIC_CLASSES: Dict[str, LLMClass] = {
         "playback": PlaybackLLM,
     }
 
     @classmethod
     def parse_model_string(cls, model_string: str) -> ModelConfig:
-        """Parse a model string into a ModelConfig object"""
-        # Check if model string is an alias
         model_string = cls.MODEL_ALIASES.get(model_string, model_string)
         parts = model_string.split(".")
 
-        # Start with all parts as the model name
-        model_parts = parts.copy()
+        model_name_str = model_string  # Default full string as model name initially
         provider = None
         reasoning_effort = None
 
-        # Check last part for reasoning effort
+        # Check for reasoning effort first (last part)
         if len(parts) > 1 and parts[-1].lower() in cls.EFFORT_MAP:
             reasoning_effort = cls.EFFORT_MAP[parts[-1].lower()]
-            model_parts = model_parts[:-1]
+            # Remove effort from parts list for provider/model name determination
+            parts_for_provider_model = parts[:-1]
+        else:
+            parts_for_provider_model = parts[:]
 
-        # Check first part for provider
-        if len(model_parts) > 1:
-            potential_provider = model_parts[0]
-            if any(provider.value == potential_provider for provider in Provider):
-                provider = Provider(potential_provider)
-                model_parts = model_parts[1:]
+        # Try to match longest possible provider string
+        identified_provider_parts = 0  # How many parts belong to the provider string
 
-        if provider == Provider.TENSORZERO and not model_parts:
+        if len(parts_for_provider_model) >= 2:
+            potential_provider_str = f"{parts_for_provider_model[0]}.{parts_for_provider_model[1]}"
+            if any(p.value == potential_provider_str for p in Provider):
+                provider = Provider(potential_provider_str)
+                identified_provider_parts = 2
+
+        if provider is None and len(parts_for_provider_model) >= 1:
+            potential_provider_str = parts_for_provider_model[0]
+            if any(p.value == potential_provider_str for p in Provider):
+                provider = Provider(potential_provider_str)
+                identified_provider_parts = 1
+
+        # Construct model_name from remaining parts
+        if identified_provider_parts > 0:
+            model_name_str = ".".join(parts_for_provider_model[identified_provider_parts:])
+        else:
+            # If no provider prefix was matched, the whole string (after effort removal) is the model name
+            model_name_str = ".".join(parts_for_provider_model)
+
+        # If provider still None, try to get from DEFAULT_PROVIDERS using the model_name_str
+        if provider is None:
+            provider = cls.DEFAULT_PROVIDERS.get(model_name_str)
+            if provider is None:
+                raise ModelConfigError(
+                    f"Unknown model or provider for: {model_string}. Model name parsed as '{model_name_str}'"
+                )
+
+        if provider == Provider.TENSORZERO and not model_name_str:
             raise ModelConfigError(
                 f"TensorZero provider requires a function name after the provider "
                 f"(e.g., tensorzero.my-function), got: {model_string}"
             )
-        # Join remaining parts as model name
-        model_name = ".".join(model_parts)
-
-        # If no provider was found in the string, look it up in defaults
-        if provider is None:
-            provider = cls.DEFAULT_PROVIDERS.get(model_name)
-            if provider is None:
-                raise ModelConfigError(f"Unknown model: {model_name}")
 
         return ModelConfig(
-            provider=provider, model_name=model_name, reasoning_effort=reasoning_effort
+            provider=provider, model_name=model_name_str, reasoning_effort=reasoning_effort
         )
 
     @classmethod
     def create_factory(
         cls, model_string: str, request_params: Optional[RequestParams] = None
     ) -> Callable[..., AugmentedLLMProtocol]:
-        """
-        Creates a factory function that follows the attach_llm protocol.
-
-        Args:
-            model_string: The model specification string (e.g. "gpt-4.1")
-            request_params: Optional parameters to configure LLM behavior
-
-        Returns:
-            A callable that takes an agent parameter and returns an LLM instance
-        """
-        # Parse configuration up front
         config = cls.parse_model_string(model_string)
+
+        # Ensure provider is valid before trying to access PROVIDER_CLASSES with it
+        if (
+            config.provider not in cls.PROVIDER_CLASSES
+            and config.model_name not in cls.MODEL_SPECIFIC_CLASSES
+        ):
+            # This check is important if a provider (like old GOOGLE) is commented out from PROVIDER_CLASSES
+            raise ModelConfigError(
+                f"Provider '{config.provider}' not configured in PROVIDER_CLASSES and model '{config.model_name}' not in MODEL_SPECIFIC_CLASSES."
+            )
+
         if config.model_name in cls.MODEL_SPECIFIC_CLASSES:
             llm_class = cls.MODEL_SPECIFIC_CLASSES[config.model_name]
         else:
+            # This line is now safer due to the check above
             llm_class = cls.PROVIDER_CLASSES[config.provider]
 
-        # Create a factory function matching the updated attach_llm protocol
         def factory(
             agent: Agent, request_params: Optional[RequestParams] = None, **kwargs
         ) -> AugmentedLLMProtocol:
-            # Create base params with parsed model name
             base_params = RequestParams()
-            base_params.model = config.model_name  # Use the parsed model name, not the alias
-
-            # Add reasoning effort if available
+            base_params.model = config.model_name
             if config.reasoning_effort:
                 kwargs["reasoning_effort"] = config.reasoning_effort.value
-
-            # Forward all arguments to LLM constructor
             llm_args = {
                 "agent": agent,
                 "model": config.model_name,
                 "request_params": request_params,
                 **kwargs,
             }
-
             llm: AugmentedLLMProtocol = llm_class(**llm_args)
             return llm
 

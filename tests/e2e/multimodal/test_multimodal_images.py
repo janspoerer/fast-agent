@@ -218,12 +218,44 @@ async def test_agent_includes_tool_results_in_multipart_result_openai(fast_agent
                     )
                 ]
             )
-            # OpenAI returns None for the first function call - different from Anthropic
-            # we are expecting a  tool call, tool response (1* text, 1 * image), final response
-            assert 3 == len(response.content)
-            assert "evalstate" in response.all_text()
-            # make sure it's available in the history
-            assert 3 == len(agent.agent._llm.message_history[1].content)
+            # Import TextContent for type checking
+            from mcp_agent.mcp_types import TextContent
+
+            def is_thought_part(part_content):
+                # Check if it's a TextContent and if its text starts with "thought" (case-insensitive)
+                return isinstance(
+                    part_content, TextContent
+                ) and part_content.text.strip().lower().startswith("thought")
+
+            # Filter out thought parts from the response content
+            filtered_response_content = [
+                part for part in response.content if not is_thought_part(part)
+            ]
+
+            # Filter out thought parts from the history message content
+            # Assuming message_history[1] is the relevant assistant message after the tool call
+            filtered_history_content = []
+            if (
+                len(agent.agent._llm.message_history) > 1
+                and agent.agent._llm.message_history[1].content
+            ):
+                filtered_history_content = [
+                    part
+                    for part in agent.agent._llm.message_history[1].content
+                    if not is_thought_part(part)
+                ]
+
+            # After filtering thoughts, we expect 3 semantic parts in the response:
+            # 1. TextContent introduction for the image (from tool result)
+            # 2. ImageContent (from tool result)
+            # 3. TextContent with the final LLM answer
+            assert 3 == len(filtered_response_content)
+            assert (
+                "evalstate" in response.all_text()
+            )  # response.all_text() will include thoughts, which is fine for this check.
+
+            # Ensure the filtered history also reflects the 3 semantic parts
+            assert 3 == len(filtered_history_content)
 
     # Execute the agent function
     await agent_function()
