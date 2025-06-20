@@ -3,7 +3,7 @@ Type definitions for agents and agent configurations.
 """
 
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -35,6 +35,15 @@ class AgentConfig(BaseModel):
     human_input: bool = False
     agent_type: AgentType = AgentType.BASIC
     default: bool = False
+    # Parameters for context truncation
+    max_context_length_per_message: Optional[int] = Field(
+        default=None,
+        description="Maximum length for any single text content piece in a message. Applies to each piece of content within a message."
+    )
+    max_total_context_length: Optional[int] = Field(
+        default=None,
+        description="Maximum total length for all text content in the agent's message history. Oldest messages are removed if exceeded."
+    )
 
     @model_validator(mode="after")
     def ensure_default_request_params(self) -> "AgentConfig":

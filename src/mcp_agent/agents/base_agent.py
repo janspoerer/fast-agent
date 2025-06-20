@@ -574,6 +574,88 @@ class BaseAgent(MCPAggregator, AgentProtocol):
 
         response: PromptMessageMultipart = await self.generate([prompt], None)
         return response.first_text()
+        
+    def _truncate_message_history(self) -> None:
+        """
+        Truncates the agent's message history to ensure it does not exceed the maximum context length.
+
+        This method performs two types of truncation:
+        1. If max_context_length_per_message is set, it truncates individual message content pieces
+           to the specified maximum length.
+        2. If max_total_context_length is set, it removes the oldest messages until the total
+           context length is below the maximum allowed.
+        """
+        if not self._llm:
+            self.logger.warning("LLM not attached, skipping history truncation.")
+            return
+
+        history_to_truncate = self._llm._message_history  # Direct reference
+
+        if not history_to_truncate:
+            self.logger.debug("Message history is empty, nothing to truncate.")
+            return
+
+        max_len_per_message = self.config.max_context_length_per_message
+        max_total_len = self.config.max_total_context_length
+
+        # Step 1: Truncate individual message content pieces
+        if max_len_per_message is not None:
+            total_original_length_step1 = 0
+            total_truncated_length_step1 = 0
+            for message_index, message in enumerate(history_to_truncate):
+                for content_piece_index, content_piece in enumerate(message.content):
+                    if isinstance(content_piece, TextContent) and content_piece.text:
+                        original_length = len(content_piece.text)
+                        total_original_length_step1 += original_length
+
+                        truncated_text = content_piece.text[:max_len_per_message]
+                        # Directly modify the TextContent object within the list
+                        history_to_truncate[message_index].content[content_piece_index] = TextContent(type="text", text=truncated_text)
+
+                        truncated_length = len(truncated_text)
+                        total_truncated_length_step1 += truncated_length
+
+                        if original_length != truncated_length:
+                            self.logger.debug(
+                                f"Truncated content piece: original_length={original_length}, "
+                                f"truncated_length={truncated_length}"
+                            )
+            self.logger.info(
+                f"Individual message truncation: "
+                f"total_original_length={total_original_length_step1}, "
+                f"total_truncated_length={total_truncated_length_step1}"
+            )
+
+        # Step 2: Remove oldest messages if total context length is exceeded
+        if max_total_len is not None:
+            recursion_depth = 0
+            max_recursion_depth = 20  # Safety break for very large histories / small limits
+
+            while recursion_depth < max_recursion_depth:
+                current_total_length = 0
+                for message in history_to_truncate:
+                    for content_piece in message.content:
+                        if isinstance(content_piece, TextContent) and content_piece.text:
+                            current_total_length += len(content_piece.text)
+
+                if current_total_length > max_total_len and history_to_truncate:
+                    self.logger.debug(
+                        f"Total context length ({current_total_length}) > max ({max_total_len}). "
+                        f"Removing oldest message. History size: {len(history_to_truncate)}"
+                    )
+                    history_to_truncate.pop(0)  # Remove the oldest message
+                    recursion_depth += 1
+                else:
+                    self.logger.info(
+                        f"Total history truncation: final_length={current_total_length}, "
+                        f"messages_removed_in_this_step={recursion_depth}"
+                    )
+                    break
+            else:  # Executed if the while loop finishes due to recursion_depth
+                self.logger.warning(
+                    f"Max recursion depth ({max_recursion_depth}) reached during total history truncation. "
+                    f"Current total length: {current_total_length}. This might indicate an issue."
+                )
 
     async def generate(
         self,
@@ -591,6 +673,11 @@ class BaseAgent(MCPAggregator, AgentProtocol):
         Returns:
             The LLM's response as a PromptMessageMultipart
         """
+        # Apply truncation if configured
+        if self._llm and (self.config.max_context_length_per_message is not None or
+                          self.config.max_total_context_length is not None):
+            self._truncate_message_history()
+
         assert self._llm
         with self.tracer.start_as_current_span(f"Agent: '{self.name}' generate"):
             return await self._llm.generate(multipart_messages, request_params)
