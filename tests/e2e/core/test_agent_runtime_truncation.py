@@ -161,3 +161,31 @@ async def test_runtime_kwargs_combined_truncation_gemini(fast_agent):
 
     # Call the defined agent function to execute the test logic
     await truncation_agent_function()
+
+
+@pytest.mark.asyncio
+@pytest.mark.e2e
+async def test_agent_definition_truncation_parameters(fast_agent):
+    fast = fast_agent
+
+    # Define an agent with the truncation parameters directly in the decorator
+    @fast.agent(
+        "configurable_truncation_agent",
+        instruction="Agent with static context truncation.",
+        model="gemini25",
+        max_total_context_length=50, # Example static values
+        max_context_length_per_message=10, # Example static values
+    )
+    async def static_truncation_agent_function():
+        async with fast.run() as agent_session:
+            agent_instance = agent_session.configurable_truncation_agent # Access by its specific name
+
+            # Assert that the agent's config reflects these values
+            assert agent_instance.config.max_total_context_length == 50
+            assert agent_instance.config.max_context_length_per_message == 10
+
+            # (Optional) You could then proceed to send messages and verify truncation based on these *static* values.
+            # E.g., send a very long message and assert its length in history.
+            # This would be a complementary test to your existing one.
+
+    await static_truncation_agent_function()

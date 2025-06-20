@@ -90,6 +90,8 @@ def _decorator_impl(
     use_history: bool = True,
     request_params: RequestParams | None = None,
     human_input: bool = False,
+    max_context_length_per_message: Optional[int] = None,
+    max_total_context_length: Optional[int] = None,
     default: bool = False,
     **extra_kwargs,
 ) -> Callable[[AgentCallable[P, R]], DecoratedAgentProtocol[P, R]]:
@@ -134,6 +136,8 @@ def _decorator_impl(
             model=model,
             use_history=use_history,
             human_input=human_input,
+            max_context_length_per_message=max_context_length_per_message,
+            max_total_context_length=max_total_context_length,
             default=default,
         )
 
@@ -177,6 +181,8 @@ def agent(
     use_history: bool = True,
     request_params: RequestParams | None = None,
     human_input: bool = False,
+    max_context_length_per_message: Optional[int] = None,
+    max_total_context_length: Optional[int] = None,
     default: bool = False,
 ) -> Callable[[AgentCallable[P, R]], DecoratedAgentProtocol[P, R]]:
     """
@@ -208,6 +214,8 @@ def agent(
         use_history=use_history,
         request_params=request_params,
         human_input=human_input,
+        max_context_length_per_message=max_context_length_per_message,
+        max_total_context_length=max_total_context_length,
         default=default,
     )
 
@@ -224,6 +232,8 @@ def custom(
     use_history: bool = True,
     request_params: RequestParams | None = None,
     human_input: bool = False,
+    max_context_length_per_message: Optional[int] = None,
+    max_total_context_length: Optional[int] = None,
     default: bool = False,
 ) -> Callable[[AgentCallable[P, R]], DecoratedAgentProtocol[P, R]]:
     """
@@ -238,6 +248,8 @@ def custom(
         use_history: Whether to maintain conversation history
         request_params: Additional request parameters for the LLM
         human_input: Whether to enable human input capabilities
+        max_context_length_per_message: Optional maximum length for any single text content piece
+        max_total_context_length: Optional maximum total length for all text content in the agent's context
 
     Returns:
         A decorator that registers the agent with proper type annotations
@@ -255,6 +267,8 @@ def custom(
         request_params=request_params,
         human_input=human_input,
         agent_class=cls,
+        max_context_length_per_message=max_context_length_per_message,
+        max_total_context_length=max_total_context_length,
         default=default,
     )
 
@@ -278,6 +292,8 @@ def orchestrator(
     human_input: bool = False,
     plan_type: Literal["full", "iterative"] = "full",
     plan_iterations: int = 5,
+    max_context_length_per_message: Optional[int] = None,
+    max_total_context_length: Optional[int] = None,
     default: bool = False,
 ) -> Callable[[AgentCallable[P, R]], DecoratedOrchestratorProtocol[P, R]]:
     """
@@ -293,6 +309,8 @@ def orchestrator(
         human_input: Whether to enable human input capabilities
         plan_type: Planning approach - "full" or "iterative"
         plan_iterations: Maximum number of planning iterations
+        max_context_length_per_message: Optional maximum length for any single text content piece
+        max_total_context_length: Optional maximum total length for all text content in the orchestrator's
         default: Whether to mark this as the default agent
 
     Returns:
@@ -316,6 +334,8 @@ def orchestrator(
             child_agents=agents,
             plan_type=plan_type,
             plan_iterations=plan_iterations,
+            max_context_length_per_message=max_context_length_per_message,
+            max_total_context_length=max_total_context_length,
             default=default,
         ),
     )
@@ -474,6 +494,8 @@ def evaluator_optimizer(
     instruction: Optional[str] = None,
     min_rating: str = "GOOD",
     max_refinements: int = 3,
+    max_context_length_per_message: Optional[int] = None,
+    max_total_context_length: Optional[int] = None,
     default: bool = False,
 ) -> Callable[[AgentCallable[P, R]], DecoratedEvaluatorOptimizerProtocol[P, R]]:
     """
@@ -486,6 +508,8 @@ def evaluator_optimizer(
         instruction: Base instruction for the evaluator-optimizer
         min_rating: Minimum acceptable quality rating (EXCELLENT, GOOD, FAIR, POOR)
         max_refinements: Maximum number of refinement iterations
+        max_context_length_per_message: Optional maximum length for any single text content piece
+        max_total_context_length: Optional maximum total length for all text content in the evaluator-optimizer
         default: Whether to mark this as the default agent
 
     Returns:
@@ -509,6 +533,8 @@ def evaluator_optimizer(
             evaluator=evaluator,
             min_rating=min_rating,
             max_refinements=max_refinements,
+            max_context_length_per_message=max_context_length_per_message,
+            max_total_context_length=max_total_context_length,
             default=default,
         ),
     )
