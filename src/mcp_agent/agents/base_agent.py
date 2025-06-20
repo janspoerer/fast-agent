@@ -185,6 +185,7 @@ class BaseAgent(MCPAggregator, AgentProtocol):
         message: Union[str, PromptMessageMultipart] | None = None,
         agent_name: Optional[str] = None,
         default_prompt: str = "",
+        **kwargs
     ) -> str:
         """
         Make the agent callable to send messages or start an interactive prompt.
@@ -192,20 +193,35 @@ class BaseAgent(MCPAggregator, AgentProtocol):
         Args:
             message: Optional message to send to the agent
             agent_name: Optional name of the agent (for consistency with DirectAgentApp)
-            default: Default message to use in interactive prompt mode
+            default_prompt: Default message to use in interactive prompt mode
+            **kwargs: Additional keyword arguments, including:
+                - max_context_length_per_message: Optional runtime override for max_context_length_per_message
+                - max_total_context_length: Optional runtime override for max_total_context_length
 
         Returns:
             The agent's response as a string or the result of the interactive session
         """
         if message:
-            return await self.send(message)
+            # Extract truncation parameters if present
+            max_context_length_per_message = kwargs.get("max_context_length_per_message")
+            max_total_context_length = kwargs.get("max_total_context_length")
+            return await self.send(
+                message, 
+                max_context_length_per_message=max_context_length_per_message, 
+                max_total_context_length=max_total_context_length
+            )
         return await self.prompt(default_prompt=default_prompt)
 
     async def generate_str(self, message: str, request_params: RequestParams | None) -> str:
         result: PromptMessageMultipart = await self.generate([Prompt.user(message)], request_params)
         return result.first_text()
 
-    async def send(self, message: Union[str, PromptMessage, PromptMessageMultipart]) -> str:
+    async def send(
+        self, 
+        message: Union[str, PromptMessage, PromptMessageMultipart],
+        max_context_length_per_message: Optional[int] = None,
+        max_total_context_length: Optional[int] = None
+    ) -> str:
         """
         Send a message to the agent and get a response.
 
@@ -214,6 +230,8 @@ class BaseAgent(MCPAggregator, AgentProtocol):
                 - String: Converted to a user PromptMessageMultipart
                 - PromptMessage: Converted to PromptMessageMultipart
                 - PromptMessageMultipart: Used directly
+            max_context_length_per_message: Optional runtime override for max_context_length_per_message
+            max_total_context_length: Optional runtime override for max_total_context_length
 
         Returns:
             The agent's response as a string
@@ -221,8 +239,13 @@ class BaseAgent(MCPAggregator, AgentProtocol):
         # Convert the input to a PromptMessageMultipart
         prompt = self._normalize_message_input(message)
 
-        # Use the LLM to generate a response
-        response = await self.generate([prompt], None)
+        # Use the LLM to generate a response, passing through the truncation parameters
+        response = await self.generate(
+            [prompt], 
+            None, 
+            max_context_length_per_message=max_context_length_per_message,
+            max_total_context_length=max_total_context_length
+        )
         return response.all_text()
 
     def _normalize_message_input(
@@ -575,7 +598,11 @@ class BaseAgent(MCPAggregator, AgentProtocol):
         response: PromptMessageMultipart = await self.generate([prompt], None)
         return response.first_text()
         
-    def _truncate_message_history(self) -> None:
+    def _truncate_message_history(
+        self, 
+        max_len_per_message_override: Optional[int] = None, 
+        max_total_len_override: Optional[int] = None
+    ) -> None:
         """
         Truncates the agent's message history to ensure it does not exceed the maximum context length.
 
@@ -584,6 +611,10 @@ class BaseAgent(MCPAggregator, AgentProtocol):
            to the specified maximum length.
         2. If max_total_context_length is set, it removes the oldest messages until the total
            context length is below the maximum allowed.
+           
+        Args:
+            max_len_per_message_override: Optional runtime override for max_context_length_per_message
+            max_total_len_override: Optional runtime override for max_total_context_length
         """
         if not self._llm:
             self.logger.warning("LLM not attached, skipping history truncation.")
@@ -595,8 +626,9 @@ class BaseAgent(MCPAggregator, AgentProtocol):
             self.logger.debug("Message history is empty, nothing to truncate.")
             return
 
-        max_len_per_message = self.config.max_context_length_per_message
-        max_total_len = self.config.max_total_context_length
+        # Use runtime overrides if provided, otherwise fall back to config values
+        max_len_per_message = max_len_per_message_override if max_len_per_message_override is not None else self.config.max_context_length_per_message
+        max_total_len = max_total_len_override if max_total_len_override is not None else self.config.max_total_context_length
 
         # Step 1: Truncate individual message content pieces
         if max_len_per_message is not None:
@@ -661,6 +693,8 @@ class BaseAgent(MCPAggregator, AgentProtocol):
         self,
         multipart_messages: List[PromptMessageMultipart],
         request_params: RequestParams | None = None,
+        max_context_length_per_message: Optional[int] = None,
+        max_total_context_length: Optional[int] = None,
     ) -> PromptMessageMultipart:
         """
         Create a completion with the LLM using the provided messages.
@@ -669,14 +703,23 @@ class BaseAgent(MCPAggregator, AgentProtocol):
         Args:
             multipart_messages: List of multipart messages to send to the LLM
             request_params: Optional parameters to configure the request
+            max_context_length_per_message: Optional runtime override for max_context_length_per_message
+            max_total_context_length: Optional runtime override for max_total_context_length
 
         Returns:
             The LLM's response as a PromptMessageMultipart
         """
-        # Apply truncation if configured
-        if self._llm and (self.config.max_context_length_per_message is not None or
-                          self.config.max_total_context_length is not None):
-            self._truncate_message_history()
+        # Apply truncation if configured or runtime parameters are provided
+        if self._llm and (
+            max_context_length_per_message is not None or
+            max_total_context_length is not None or
+            self.config.max_context_length_per_message is not None or
+            self.config.max_total_context_length is not None
+        ):
+            self._truncate_message_history(
+                max_len_per_message_override=max_context_length_per_message,
+                max_total_len_override=max_total_context_length
+            )
 
         assert self._llm
         with self.tracer.start_as_current_span(f"Agent: '{self.name}' generate"):

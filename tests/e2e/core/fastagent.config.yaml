@@ -1,0 +1,6 @@
+agents:
+  - name: gemini25
+    model: "google.gemini-2.0-flash" # Adjust this to match your actual Gemini model identifier
+    instruction: "You are a test agent for runtime truncation testing."
+    # max_context_length_per_message and max_total_context_length are intentionally omitted
+    # to ensure we're testing the runtime kwargs, not static configuration
