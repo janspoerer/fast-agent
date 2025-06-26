@@ -96,6 +96,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
     PARAM_METADATA = "metadata"
     PARAM_USE_HISTORY = "use_history"
     PARAM_MAX_ITERATIONS = "max_iterations"
+    PARAM_MAX_CONTEXT_LENGTH_TOTAL = "max_context_length_total"
     PARAM_TEMPLATE_VARS = "template_vars"
 
     # Base set of fields that should always be excluded
@@ -220,6 +221,10 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
 
         self._precall(multipart_messages)
 
+        # Check and truncate context if needed before API call
+        final_request_params = self.get_request_params(request_params)
+        await self._check_and_truncate_context(final_request_params)
+
         assistant_response: PromptMessageMultipart = await self._apply_prompt_provider_specific(
             multipart_messages, request_params
         )
@@ -258,6 +263,11 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         """Return a structured response from the LLM using the provided messages."""
 
         self._precall(multipart_messages)
+        
+        # Check and truncate context if needed before API call
+        final_request_params = self.get_request_params(request_params)
+        await self._check_and_truncate_context(final_request_params)
+        
         result, assistant_response = await self._apply_prompt_provider_specific_structured(
             multipart_messages, model, request_params
         )
@@ -594,6 +604,70 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
             aggregator=self.aggregator,
             arguments=arguments,
         )
+
+    async def _check_and_truncate_context(self, request_params: RequestParams) -> None:
+        """
+        Check if context length exceeds max_context_length_total and truncate if needed.
+        
+        Args:
+            request_params: The request parameters containing max_context_length_total setting
+        """
+        if not request_params.max_context_length_total:
+            return
+            
+        # Check current context usage
+        current_tokens = self.usage_accumulator.current_context_tokens
+        if current_tokens <= request_params.max_context_length_total:
+            return
+            
+        # Need to truncate - create summary of conversation history
+        history_messages = self.history.get(include_completion_history=True)
+        if not history_messages:
+            return
+            
+        # Serialize history for summarization
+        from mcp_agent.mcp.prompt_serialization import messages_to_delimited_text
+        history_text = messages_to_delimited_text(self._message_history)
+        
+        # Create summarization prompt
+        summary_prompt = f"""Please provide a concise summary of this conversation history that captures the key context, decisions, and current state:
+
+{history_text}
+
+Focus on:
+- Main topics discussed
+- Important decisions made
+- Current state of any ongoing tasks
+- Key information that should be retained for context
+
+Provide a clear, concise summary in 2-3 paragraphs."""
+
+        # Generate summary using current LLM
+        from mcp_agent.core.prompt import Prompt
+        summary_messages = [Prompt.user(summary_prompt)]
+        
+        # Use base completion to avoid recursion
+        summary_result = await self._apply_prompt_provider_specific(
+            summary_messages, 
+            RequestParams(use_history=False, max_iterations=1)
+        )
+        
+        if summary_result:
+            summary_text = summary_result.first_text()
+            
+            # Clear history and start fresh with summary
+            self.history.clear()
+            self._message_history.clear()
+            
+            # Add summary as context
+            context_messages = [
+                Prompt.user(f"Here is a summary of our previous conversation: {summary_text}"),
+                Prompt.assistant("Thank you for the summary. I'll continue from here with this context in mind.")
+            ]
+            
+            # Add to both histories
+            self.history.extend([self.type_converter.convert_to_message_param(msg) for msg in context_messages])
+            self._message_history.extend(context_messages)
 
     async def apply_prompt_template(self, prompt_result: GetPromptResult, prompt_name: str) -> str:
         """
