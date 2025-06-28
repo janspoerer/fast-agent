@@ -685,10 +685,11 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
             return
         
         try:
-            # Serialize history for summarization
+            # The system prompt is not part of the message history, so it's preserved by default.
+            # We only need to summarize the message history.
             from mcp_agent.mcp.prompt_serialization import messages_to_delimited_text
             history_text = messages_to_delimited_text(self._message_history)
-            
+
             logger.debug(f"History serialized to {len(history_text)} characters for summarization")
             
             # Create summarization prompt
@@ -725,13 +726,13 @@ Provide a clear, concise summary in 2-3 paragraphs."""
                 logger.debug("Clearing conversation history...")
                 self.history.clear()
                 self._message_history.clear()
-                
+
                 # Add summary as context
                 context_messages = [
                     Prompt.user(f"Here is a summary of our previous conversation: {summary_text}"),
                     Prompt.assistant("Thank you for the summary. I'll continue from here with this context in mind.")
                 ]
-                
+
                 # Add to both histories
                 logger.debug("Adding summary context to history...")
                 self.history.extend([self.type_converter.convert_to_message_param(msg) for msg in context_messages])
