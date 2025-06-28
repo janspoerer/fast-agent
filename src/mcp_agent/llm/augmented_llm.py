@@ -687,8 +687,10 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         try:
             # The system prompt is not part of the message history, so it's preserved by default.
             # We only need to summarize the message history.
-            from mcp_agent.mcp.prompt_serialization import messages_to_delimited_text
-            history_text = messages_to_delimited_text(self._message_history)
+            from mcp_agent.mcp.prompt_serialization import multipart_messages_to_delimited_format
+
+            delimited_content = multipart_messages_to_delimited_format(self._message_history)
+            history_text = "\n".join(delimited_content)
 
             logger.debug(f"History serialized to {len(history_text)} characters for summarization")
             
