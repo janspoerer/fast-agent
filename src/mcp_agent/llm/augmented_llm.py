@@ -171,7 +171,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
                 self.default_request_params, self._init_request_params
             )
 
-        self.type_converter = type_converter
+        self.type_converter = type_converter()
         self.verb = kwargs.get("verb")
 
         # Initialize usage tracking
