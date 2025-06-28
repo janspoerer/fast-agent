@@ -90,7 +90,7 @@ class TestContextTruncationBehavior:
         # Verify history is cleared and replaced with summary
         assert len(llm._message_history) == 2
         assert "summary" in llm._message_history[0].first_text()
-        assert "summary" in llm.history.get()[0]['content']
+        assert "summary" in llm.history.get()[0].first_text()
 
     @pytest.mark.asyncio
     async def test_truncation_skipped_if_pending_tool_calls(self, mock_llm):
