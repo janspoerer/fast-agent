@@ -20,7 +20,10 @@ class TestContextTruncationBehavior:
             # Configure the mock to return a summary when called for summarization
             mock_apply.return_value = Prompt.assistant("This is a summary.")
 
-            llm = PassthroughLLM(provider=MagicMock(), agent=MagicMock())
+            mock_agent = MagicMock()
+            mock_agent.instruction = "This is a mock system prompt."
+            llm = PassthroughLLM(provider=MagicMock(), agent=mock_agent)
+
             llm.usage_accumulator = MagicMock()
             yield llm, mock_apply
 
