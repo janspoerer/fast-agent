@@ -223,6 +223,11 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
 
         # Check and truncate context if needed before API call
         final_request_params = self.get_request_params(request_params)
+        
+        from mcp_agent.logging.logger import get_logger
+        logger = get_logger(__name__)
+        logger.debug(f"generate() called with {len(multipart_messages)} messages, checking context truncation...")
+        
         await self._check_and_truncate_context(final_request_params)
 
         assistant_response: PromptMessageMultipart = await self._apply_prompt_provider_specific(
@@ -266,6 +271,11 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         
         # Check and truncate context if needed before API call
         final_request_params = self.get_request_params(request_params)
+        
+        from mcp_agent.logging.logger import get_logger
+        logger = get_logger(__name__)
+        logger.debug(f"structured() called with {len(multipart_messages)} messages, checking context truncation...")
+        
         await self._check_and_truncate_context(final_request_params)
         
         result, assistant_response = await self._apply_prompt_provider_specific_structured(
@@ -612,25 +622,77 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         Args:
             request_params: The request parameters containing max_context_length_total setting
         """
+        from mcp_agent.logging.logger import get_logger
+        logger = get_logger(__name__)
+        
+        # Early exit if truncation is not enabled
         if not request_params.max_context_length_total:
+            logger.debug("Context truncation not enabled (max_context_length_total is None)")
             return
             
         # Check current context usage
         current_tokens = self.usage_accumulator.current_context_tokens
-        if current_tokens <= request_params.max_context_length_total:
+        max_tokens = request_params.max_context_length_total
+        
+        logger.debug(f"Context check: {current_tokens}/{max_tokens} tokens ({current_tokens/max_tokens*100:.1f}%)")
+        
+        if current_tokens <= max_tokens:
+            logger.debug("Context within limits, no truncation needed")
             return
             
-        # Need to truncate - create summary of conversation history
+        logger.info(f"Context truncation triggered: {current_tokens} tokens exceeds limit of {max_tokens}")
+        
+        # Get current history for analysis
         history_messages = self.history.get(include_completion_history=True)
         if not history_messages:
+            logger.warning("No history messages found, skipping truncation")
             return
             
-        # Serialize history for summarization
-        from mcp_agent.mcp.prompt_serialization import messages_to_delimited_text
-        history_text = messages_to_delimited_text(self._message_history)
+        message_count = len(self._message_history)
+        history_size = len(history_messages)
         
-        # Create summarization prompt
-        summary_prompt = f"""Please provide a concise summary of this conversation history that captures the key context, decisions, and current state:
+        logger.info(f"Pre-truncation state: {message_count} message history items, {history_size} provider history items")
+        
+        # CRITICAL: Check if we have pending tool calls that haven't been responded to
+        # This could cause the Google API "function response parts" error
+        def has_pending_tool_calls() -> bool:
+            """Check if there are unresolved tool calls in the conversation."""
+            try:
+                # Check the last few messages for tool call patterns
+                recent_messages = self._message_history[-5:] if len(self._message_history) >= 5 else self._message_history
+                
+                for i, msg in enumerate(recent_messages):
+                    logger.debug(f"Message {i}: role={getattr(msg, 'role', 'unknown')}")
+                    
+                    # Look for assistant messages that might contain tool calls
+                    if hasattr(msg, 'role') and msg.role == 'assistant':
+                        # Check if this message has tool calls
+                        content_str = str(msg.content) if hasattr(msg, 'content') else str(msg)
+                        if ('tool_calls' in content_str.lower() or 
+                            'function_call' in content_str.lower() or
+                            'mcp_' in content_str.lower()):
+                            logger.warning(f"Potential tool call detected in message {i}")
+                            return True
+                            
+                return False
+            except Exception as e:
+                logger.warning(f"Error checking for pending tool calls: {e}")
+                return True  # Err on the side of caution
+        
+        if has_pending_tool_calls():
+            logger.warning("Skipping context truncation: potential pending tool calls detected")
+            logger.warning("This prevents Google API 'function response parts' errors")
+            return
+        
+        try:
+            # Serialize history for summarization
+            from mcp_agent.mcp.prompt_serialization import messages_to_delimited_text
+            history_text = messages_to_delimited_text(self._message_history)
+            
+            logger.debug(f"History serialized to {len(history_text)} characters for summarization")
+            
+            # Create summarization prompt
+            summary_prompt = f"""Please provide a concise summary of this conversation history that captures the key context, decisions, and current state:
 
 {history_text}
 
@@ -642,32 +704,50 @@ Focus on:
 
 Provide a clear, concise summary in 2-3 paragraphs."""
 
-        # Generate summary using current LLM
-        from mcp_agent.core.prompt import Prompt
-        summary_messages = [Prompt.user(summary_prompt)]
-        
-        # Use base completion to avoid recursion
-        summary_result = await self._apply_prompt_provider_specific(
-            summary_messages, 
-            RequestParams(use_history=False, max_iterations=1)
-        )
-        
-        if summary_result:
-            summary_text = summary_result.first_text()
+            logger.debug("Starting context summarization...")
             
-            # Clear history and start fresh with summary
-            self.history.clear()
-            self._message_history.clear()
+            # Generate summary using current LLM
+            from mcp_agent.core.prompt import Prompt
+            summary_messages = [Prompt.user(summary_prompt)]
             
-            # Add summary as context
-            context_messages = [
-                Prompt.user(f"Here is a summary of our previous conversation: {summary_text}"),
-                Prompt.assistant("Thank you for the summary. I'll continue from here with this context in mind.")
-            ]
+            # Use base completion to avoid recursion
+            summary_result = await self._apply_prompt_provider_specific(
+                summary_messages, 
+                RequestParams(use_history=False, max_iterations=1, max_context_length_total=None)
+            )
             
-            # Add to both histories
-            self.history.extend([self.type_converter.convert_to_message_param(msg) for msg in context_messages])
-            self._message_history.extend(context_messages)
+            if summary_result:
+                summary_text = summary_result.first_text()
+                logger.info(f"Context summary generated: {len(summary_text)} characters")
+                logger.debug(f"Summary content preview: {summary_text[:200]}...")
+                
+                # Clear history and start fresh with summary
+                logger.debug("Clearing conversation history...")
+                self.history.clear()
+                self._message_history.clear()
+                
+                # Add summary as context
+                context_messages = [
+                    Prompt.user(f"Here is a summary of our previous conversation: {summary_text}"),
+                    Prompt.assistant("Thank you for the summary. I'll continue from here with this context in mind.")
+                ]
+                
+                # Add to both histories
+                logger.debug("Adding summary context to history...")
+                self.history.extend([self.type_converter.convert_to_message_param(msg) for msg in context_messages])
+                self._message_history.extend(context_messages)
+                
+                # Log final state
+                new_tokens = self.usage_accumulator.current_context_tokens
+                logger.info(f"Context truncation completed: {current_tokens} -> {new_tokens} tokens (reduced by {current_tokens - new_tokens})")
+                logger.info(f"Post-truncation state: {len(self._message_history)} message history items, {len(self.history.get(include_completion_history=True))} provider history items")
+                
+            else:
+                logger.error("Failed to generate summary - summary_result is None")
+                
+        except Exception as e:
+            logger.error(f"Context truncation failed: {e}", exc_info=True)
+            # Don't raise - continue with original context to avoid breaking the conversation
 
     async def apply_prompt_template(self, prompt_result: GetPromptResult, prompt_name: str) -> str:
         """
