@@ -735,7 +735,7 @@ Provide a clear, concise summary in 2-3 paragraphs."""
 
                 # Add to both histories
                 logger.debug("Adding summary context to history...")
-                self.history.extend([self.type_converter.convert_to_message_param(msg) for msg in context_messages])
+                self.history.extend([self.type_converter.from_prompt_message(msg) for msg in context_messages])
                 self._message_history.extend(context_messages)
                 
                 # Log final state
