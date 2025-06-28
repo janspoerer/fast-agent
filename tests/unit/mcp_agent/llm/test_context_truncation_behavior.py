@@ -6,9 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from mcp_agent.core.request_params import RequestParams
-from mcp_agent.llm.augmented_llm import AugmentedLLM
-from mcp_agent.llm.augmented_llm_passthrough import PassthroughAugmentedLLM
-from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
+from mcp_agent.llm.augmented_llm_passthrough import PassthroughLLM
 from mcp_agent.core.prompt import Prompt
 
 
@@ -22,7 +20,7 @@ class TestContextTruncationBehavior:
             # Configure the mock to return a summary when called for summarization
             mock_apply.return_value = Prompt.assistant("This is a summary.")
 
-            llm = PassthroughAugmentedLLM(provider=MagicMock(), agent=MagicMock())
+            llm = PassthroughLLM(provider=MagicMock(), agent=MagicMock())
             llm.usage_accumulator = MagicMock()
             yield llm, mock_apply
 
