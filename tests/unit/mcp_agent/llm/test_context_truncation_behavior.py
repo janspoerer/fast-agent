@@ -16,7 +16,7 @@ class TestContextTruncationBehavior:
     @pytest.fixture
     def mock_llm(self):
         """Fixture to create a mock AugmentedLLM for testing."""
-        with patch('mcp_agent.llm.augmented_llm.AugmentedLLM._apply_prompt_provider_specific', new_callable=AsyncMock) as mock_apply:
+        with patch('mcp_agent.llm.augmented_llm_passthrough.PassthroughLLM._apply_prompt_provider_specific', new_callable=AsyncMock) as mock_apply:
             # Configure the mock to return a summary when called for summarization
             mock_apply.return_value = Prompt.assistant("This is a summary.")
 
@@ -32,6 +32,10 @@ class TestContextTruncationBehavior:
         """Test that truncation is triggered when context exceeds the limit."""
         llm, mock_apply = mock_llm
         llm.usage_accumulator.current_context_tokens = 150
+        
+        # Add some history to ensure the truncation logic doesn't exit early
+        llm._message_history.extend([Prompt.user("Hello")])
+        llm.history.extend([{'role': 'user', 'content': 'Hello'}])
 
         request_params = RequestParams(max_context_length_total=100)
         

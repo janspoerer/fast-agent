@@ -653,8 +653,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         
         logger.info(f"Pre-truncation state: {message_count} message history items, {history_size} provider history items")
         
-        # CRITICAL: Check if we have pending tool calls that haven't been responded to
-        # This could cause the Google API "function response parts" error
+        # Check if we have pending tool calls that haven't been responded to. This could otherwise cause the Google API "function response parts" error
         def has_pending_tool_calls() -> bool:
             """Check if there are unresolved tool calls in the conversation."""
             try:
@@ -685,8 +684,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
             return
         
         try:
-            # The system prompt is not part of the message history, so it's preserved by default.
-            # We only need to summarize the message history.
+            # The system prompt is not part of the message history, so it's preserved by default. We only need to summarize the message history.
             from mcp_agent.mcp.prompt_serialization import multipart_messages_to_delimited_format
 
             delimited_content = multipart_messages_to_delimited_format(self._message_history)
