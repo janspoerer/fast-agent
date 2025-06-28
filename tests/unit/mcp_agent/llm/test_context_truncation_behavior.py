@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from mcp_agent.core.request_params import RequestParams
 from mcp_agent.llm.augmented_llm import AugmentedLLM
-from mcp_agent.llm.providers.augmented_llm_passthrough import PassthroughAugmentedLLM
+from mcp_agent.llm.augmented_llm_passthrough import PassthroughAugmentedLLM
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.core.prompt import Prompt
 

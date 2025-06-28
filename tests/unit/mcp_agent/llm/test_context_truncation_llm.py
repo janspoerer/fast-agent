@@ -3,7 +3,6 @@ Unit tests for context truncation in AugmentedLLM.
 Tests the parameter constants and exclusion fields.
 """
 
-import pytest
 from mcp_agent.llm.augmented_llm import AugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_anthropic import AnthropicAugmentedLLM
