@@ -3,7 +3,6 @@ Unit tests for context truncation functionality.
 Tests the max_context_length_total parameter and related logic.
 """
 
-import pytest
 from mcp_agent.core.request_params import RequestParams
 
 
@@ -19,7 +18,7 @@ class TestContextTruncationParameter:
         )
         
         assert params.max_context_length_total == 50000
-        assert params.use_history == True
+        assert params.use_history
         assert params.max_iterations == 10
 
     def test_parameter_defaults_to_none(self):
@@ -36,7 +35,7 @@ class TestContextTruncationParameter:
         }
         params = RequestParams(**param_dict)
         assert params.max_context_length_total == 75000
-        assert params.use_history == True
+        assert params.use_history
 
     def test_parameter_with_none_value(self):
         """Test parameter can be explicitly set to None."""
@@ -79,9 +78,9 @@ class TestContextTruncationParameter:
         assert params.max_context_length_total == 50000
         assert params.maxTokens == 2048
         assert params.model == "gpt-4"
-        assert params.use_history == True
+        assert params.use_history
         assert params.max_iterations == 20
-        assert params.parallel_tool_calls == True
+        assert params.parallel_tool_calls
         assert params.template_vars == {"key": "value"}
 
     def test_parameter_serialization(self):
@@ -98,9 +97,9 @@ class TestContextTruncationParameter:
         copied = original.model_copy()
         
         assert copied.max_context_length_total == 40000
-        assert copied.use_history == False
+        assert not copied.use_history
         
         # Test model_copy with updates
         updated = original.model_copy(update={"max_context_length_total": 60000})
         assert updated.max_context_length_total == 60000
-        assert updated.use_history == False  # Original value preserved
+        assert not updated.use_history  # Original value preserved

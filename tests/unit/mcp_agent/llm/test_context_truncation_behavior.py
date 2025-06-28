@@ -1,13 +1,13 @@
 """
 Unit tests for the behavior of context truncation in AugmentedLLM.
 """
-
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from mcp_agent.core.prompt import Prompt
 from mcp_agent.core.request_params import RequestParams
 from mcp_agent.llm.augmented_llm_passthrough import PassthroughLLM
-from mcp_agent.core.prompt import Prompt
 
 
 class TestContextTruncationBehavior:

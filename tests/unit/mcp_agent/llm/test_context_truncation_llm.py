@@ -4,9 +4,9 @@ Tests the parameter constants and exclusion fields.
 """
 
 from mcp_agent.llm.augmented_llm import AugmentedLLM
-from mcp_agent.llm.providers.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_google_native import GoogleNativeAugmentedLLM
+from mcp_agent.llm.providers.augmented_llm_openai import OpenAIAugmentedLLM
 
 
 class TestContextTruncationLLMIntegration:
