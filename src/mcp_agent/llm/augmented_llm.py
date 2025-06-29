@@ -631,16 +631,15 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
             return
             
         # Check current context usage
-        current_tokens = self.usage_accumulator.current_context_tokens
         max_tokens = request_params.max_context_length_total
         
-        logger.debug(f"Context check: {current_tokens}/{max_tokens} tokens ({current_tokens/max_tokens*100:.1f}%)")
+        logger.debug(f"Context check: {self.usage_accumulator.current_context_tokens}/{max_tokens} tokens ({self.usage_accumulator.current_context_tokens/max_tokens*100:.1f}%)")
         
-        if current_tokens <= max_tokens:
-            logger.debug("Context within limits, no truncation needed")
+        if self.usage_accumulator.current_context_tokens <= max_tokens:
+            logger.debug(f"Context within limits, no truncation needed (current_tokens = {self.usage_accumulator.current_context_tokens}, max_tokens = {max_tokens})")
             return
             
-        logger.info(f"Context truncation triggered: {current_tokens} tokens exceeds limit of {max_tokens}")
+        logger.info(f"Context truncation triggered: {self.usage_accumulator.current_context_tokens} tokens exceeds limit of {max_tokens}")
         
         # Get current history for analysis
         history_messages = self.history.get(include_completion_history=True)
@@ -727,6 +726,7 @@ Provide a clear, concise summary in 2-3 paragraphs."""
                 self.history.clear()
                 self._message_history.clear()
 
+
                 # Add summary as context
                 context_messages = [
                     Prompt.user(f"Here is a summary of our previous conversation: {summary_text}"),
@@ -739,8 +739,11 @@ Provide a clear, concise summary in 2-3 paragraphs."""
                 self._message_history.extend(context_messages)
                 
                 # Log final state
-                new_tokens = self.usage_accumulator.current_context_tokens
-                logger.info(f"Context truncation completed: {current_tokens} -> {new_tokens} tokens (reduced by {current_tokens - new_tokens})")
+                delimited_content = multipart_messages_to_delimited_format(self._message_history)
+                history_text = "\n".join(delimited_content)
+
+                
+                logger.info(f"Context truncation completed. New history: {history_text}")
                 logger.info(f"Post-truncation state: {len(self._message_history)} message history items, {len(self.history.get(include_completion_history=True))} provider history items")
                 
             else:
