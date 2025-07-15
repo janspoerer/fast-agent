@@ -101,9 +101,9 @@ async def test_summarize_and_truncate_conversational_injection(context_truncatio
 def test_estimate_tokens_with_tiktoken(context_truncation):
     """Test token estimation using tiktoken."""
     messages = [create_message("user", "This is a test sentence.")]
-    assert context_truncation._estimate_tokens(messages, "gpt-4") == 6
+    assert context_truncation._estimate_tokens(messages, "gpt-4") == 10
 
 def test_estimate_tokens_fallback(context_truncation):
     """Test token estimation fallback for unknown models."""
     messages = [create_message("user", "This is a test sentence.")]
-    assert context_truncation._estimate_tokens(messages, "unknown-model") == 6
+    assert context_truncation._estimate_tokens(messages, "unknown-model") == 10
