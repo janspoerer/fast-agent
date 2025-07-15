@@ -261,7 +261,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         initial_history_length = len(conversation_history)
 
 
-        self.logger.debug(f"""!!!!!!!!!!!!!!!!!!!! _google_completion Augmented LLM Google Native !!!!!!!!!!!!!!!!!!!!!!!!!!!!""")
+        self.logger.debug("""!!!!!!!!!!!!!!!!!!!! _google_completion Augmented LLM Google Native !!!!!!!!!!!!!!!!!!!!!!!!!!!!""")
 
         for i in range(request_params.max_iterations):
             # CONTEXT TRUNCATION LOGIC

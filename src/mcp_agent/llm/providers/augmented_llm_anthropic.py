@@ -5,6 +5,7 @@ from mcp.types import EmbeddedResource, ImageContent, TextContent
 from mcp_agent.core.prompt import Prompt
 from mcp_agent.event_progress import ProgressAction
 from mcp_agent.llm.context_truncation import ContextTruncation
+from mcp_agent.llm.memory import SimpleMemory
 from mcp_agent.llm.provider_types import Provider
 from mcp_agent.llm.providers.multipart_converter_anthropic import (
     AnthropicConverter,

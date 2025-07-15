@@ -1,10 +1,13 @@
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+
 from mcp_agent.context import Context
 from mcp_agent.llm.context_truncation import ContextTruncation
 from mcp_agent.llm.memory import SimpleMemory
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
+
 
 @pytest.fixture
 def mock_context():

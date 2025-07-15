@@ -7,9 +7,8 @@ import tiktoken
 from mcp_agent.context import Context
 from mcp_agent.context_dependent import ContextDependent
 from mcp_agent.llm.memory import Memory, SimpleMemory
-from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.logging.logger import get_logger
-
+from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 
 DEFAULT_SUMMARIZATION_KEEP_RATIO = 0.5 # By default, we keep 50% of the context window for recent messages when summarizing
 
@@ -42,14 +41,14 @@ class ContextTruncation(ContextDependent):
         self.logger = get_logger(__name__)
         self._summarization_llm = None
 
-        self.logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!! ContextTruncation initialized !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        self.logger.info("Initialized ContextTruncation")
 
     def _estimate_tokens(
         self, messages: list[PromptMessageMultipart], model: str, system_prompt: str | None = None
     ) -> int:
         """Estimate the number of tokens for a list of messages using tiktoken."""
 
-        self.logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!! ESTIMATE TOKENS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        self.logger.info(f"_estimate_tokens(): Estimating tokens for model {model} with system prompt.")
         
         try:
             # Get the correct tokenizer for the specified model
@@ -79,10 +78,8 @@ class ContextTruncation(ContextDependent):
     ) -> bool:
         """Check if the context needs to be truncated."""
 
+        self.logger.info(f"needs_truncation() called with max_tokens: {max_tokens}.")
 
-
-
-        self.logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!! NEEDS TRUNCATION !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         if not max_tokens:
             return False
         current_tokens = self._estimate_tokens(memory.get(), model, system_prompt)
@@ -95,8 +92,7 @@ class ContextTruncation(ContextDependent):
         Truncates/summarizes/compacts the memory by removing the oldest messages until the token count is within the limit.
         """
 
-
-        self.logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!! TRUNCATE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        self.logger.info(f"truncate() called with max_tokens: {max_tokens}.")
 
         if not self.needs_truncation(memory, max_tokens, model, system_prompt):
             return memory
@@ -140,8 +136,7 @@ class ContextTruncation(ContextDependent):
         Truncates the memory by summarizing older messages and replacing them with a summary.
         """
 
-
-        self.logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!! SUMMARIZE AND TRUNCATE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        self.logger.info("summarize_and_truncate() called.")
 
         if not self.needs_truncation(memory, max_tokens, model, system_prompt):
             return memory
@@ -186,6 +181,8 @@ class ContextTruncation(ContextDependent):
         self, messages: list[PromptMessageMultipart], max_tokens: int, model: str
     ) -> int:
         """Finds the index at which to split messages for summarization."""
+
+        self.logger.info("Finding summarization point...")
         
         keep_buffer_tokens = int(max_tokens * DEFAULT_SUMMARIZATION_KEEP_RATIO)
         
