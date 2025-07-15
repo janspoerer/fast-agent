@@ -40,7 +40,7 @@ def test_needs_truncation_false(context_truncation, memory):
 
 def test_needs_truncation_true(context_truncation, memory):
     """Test that needs_truncation returns True when context exceeds limits."""
-    large_text = "a" * 2000  # Approx 500 tokens
+    large_text = "This is a realistic test sentence. " * 100 # Approx. 800 tokens
     memory.extend([create_message("user", large_text)])
     assert context_truncation.needs_truncation(memory, max_tokens=400, model="test-model") is True
 
