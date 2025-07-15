@@ -10,17 +10,31 @@ from mcp_agent.llm.memory import Memory, SimpleMemory
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.logging.logger import get_logger
 
-# By default, we keep 50% of the context window for recent messages when summarizing
-DEFAULT_SUMMARIZATION_KEEP_RATIO = 0.5
 
-
-
+DEFAULT_SUMMARIZATION_KEEP_RATIO = 0.5 # By default, we keep 50% of the context window for recent messages when summarizing
 
 
 class ContextTruncation(ContextDependent):
     """
     Manages the context window of an LLM by truncating the message history
     when it exceeds a specified token limit.
+
+    Use truncation like this:
+
+    @fast.agent(
+        servers=[
+            ... 
+        ],
+        use_history=True,
+        request_params=RequestParams(
+            maxTokens=4_096,
+            max_iterations=100,
+
+            truncation_strategy="summarize",  # Use summarization for truncation
+            max_context_tokens=4_096,  # Set a maximum context token limit
+        ), 
+    )
+
     """
 
     def __init__(self, context: Context):
@@ -28,14 +42,14 @@ class ContextTruncation(ContextDependent):
         self.logger = get_logger(__name__)
         self._summarization_llm = None
 
-        self.logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!! ContextTruncation initialized!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        self.logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!! ContextTruncation initialized !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
     def _estimate_tokens(
         self, messages: list[PromptMessageMultipart], model: str, system_prompt: str | None = None
     ) -> int:
         """Estimate the number of tokens for a list of messages using tiktoken."""
 
-        self.logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!! ESTIMATE TOKENS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        self.logger.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!! ESTIMATE TOKENS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         
         try:
             # Get the correct tokenizer for the specified model
