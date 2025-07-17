@@ -203,36 +203,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         # Note: We'll cache tools+system together by putting cache_control only on system prompt
 
         for i in range(params.max_iterations):
-            # CONTEXT TRUNCATION LOGIC
-            if params.truncation_strategy and params.max_context_tokens:
-                # Create a temporary memory object to check the token count with the new message
-                temp_memory = SimpleMemory()
-                temp_memory.set(self.history.get() + [message_param])
-                
-                if self.context_truncation.needs_truncation(
-                    temp_memory,
-                    params.max_context_tokens,
-                    model,
-                    system_prompt,
-                ):
-                    if params.truncation_strategy == "summarize":
-                        self.history = await self.context_truncation.summarize_and_truncate(
-                            self.history,
-                            params.max_context_tokens,
-                            model,
-                            system_prompt,
-                        )
-                    else:
-                        self.history = self.context_truncation.truncate(
-                            self.history,
-                            params.max_context_tokens,
-                            model,
-                            system_prompt,
-                        )
-                    # Rebuild messages list with truncated history
-                    messages = []
-                    messages.extend(self.history.get(include_completion_history=params.use_history))
-                    messages.append(message_param)
+
 
             self._log_chat_progress(self.chat_turn(), model=model)
 
@@ -496,32 +467,45 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         messages_to_add = (
             multipart_messages[:-1] if last_message.role == "user" else multipart_messages
         )
-        converted = []
 
-        # Get cache mode configuration
-        cache_mode = self._get_cache_mode()
-
-        for msg in messages_to_add:
-            anthropic_msg = AnthropicConverter.convert_to_anthropic(msg)
-
-            # Apply caching to template messages if cache_mode is "prompt" or "auto"
-            if is_template and cache_mode in ["prompt", "auto"] and anthropic_msg.get("content"):
-                content_list = anthropic_msg["content"]
-                if isinstance(content_list, list) and content_list:
-                    # Apply cache control to the last content block
-                    last_block = content_list[-1]
-                    if isinstance(last_block, dict):
-                        last_block["cache_control"] = {"type": "ephemeral"}
-                        self.logger.debug(
-                            f"Applied cache_control to template message with role {anthropic_msg.get('role')}"
-                        )
-
-            converted.append(anthropic_msg)
-
-        self.history.extend(converted, is_prompt=is_template)
+        # Store original PromptMessageMultipart objects in memory
+        self.history.extend(messages_to_add, is_prompt=is_template)
 
         if last_message.role == "user":
             self.logger.debug("Last message in prompt is from user, generating assistant response")
+            
+            # ✅ NEW: Check truncation BEFORE conversion, while we still have PromptMessageMultipart objects
+            params = self.get_request_params(request_params)
+            if params.truncation_strategy and params.max_context_tokens:
+                model = self.default_request_params.model
+                system_prompt = self.instruction or params.systemPrompt
+                
+                # Create temp memory with current history + new message (all PromptMessageMultipart)
+                temp_memory = SimpleMemory()
+                temp_memory.set(self.history.get() + [last_message])
+                
+                if self.context_truncation.needs_truncation(
+                    temp_memory,
+                    params.max_context_tokens,
+                    model,
+                    system_prompt,
+                ):
+                    if params.truncation_strategy == "summarize":
+                        self.history = await self.context_truncation.summarize_and_truncate(
+                            self.history,
+                            params.max_context_tokens,
+                            model,
+                            system_prompt,
+                        )
+                    else:
+                        self.history = self.context_truncation.truncate(
+                            self.history,
+                            params.max_context_tokens,
+                            model,
+                            system_prompt,
+                        )
+            
+            # Now convert to API format for the actual call
             message_param = AnthropicConverter.convert_to_anthropic(last_message)
             return await self.generate_messages(message_param, request_params)
         else:

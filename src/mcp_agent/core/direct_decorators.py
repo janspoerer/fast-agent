@@ -93,6 +93,8 @@ def _decorator_impl(
     request_params: RequestParams | None = None,
     human_input: bool = False,
     default: bool = False,
+    truncation_strategy: Literal["simple", "summarize"] | None = None,
+    max_context_tokens: int | None = None,
     **extra_kwargs,
 ) -> Callable[[AgentCallable[P, R]], DecoratedAgentProtocol[P, R]]:
     """
@@ -144,6 +146,14 @@ def _decorator_impl(
         # Update request params if provided
         if request_params:
             config.default_request_params = request_params
+        
+        if truncation_strategy or max_context_tokens:
+            if not config.default_request_params:
+                config.default_request_params = RequestParams()
+            if truncation_strategy:
+                config.default_request_params.truncation_strategy = truncation_strategy
+            if max_context_tokens:
+                config.default_request_params.max_context_tokens = max_context_tokens
 
         # Store metadata on the wrapper function
         agent_data = {
@@ -184,6 +194,8 @@ def agent(
     default: bool = False,
     elicitation_handler: Optional[ElicitationFnT] = None,
     api_key: str | None = None,
+    truncation_strategy: Literal["simple", "summarize"] | None = None,
+    max_context_tokens: int | None = None,
 ) -> Callable[[AgentCallable[P, R]], DecoratedAgentProtocol[P, R]]:
     """
     Decorator to create and register a standard agent with type-safe signature.
@@ -218,6 +230,8 @@ def agent(
         default=default,
         elicitation_handler=elicitation_handler,
         api_key=api_key,
+        truncation_strategy=truncation_strategy,
+        max_context_tokens=max_context_tokens,
     )
 
 

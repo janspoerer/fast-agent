@@ -13,6 +13,8 @@ from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 DEFAULT_SUMMARIZATION_KEEP_RATIO = 0.5 # By default, we keep 50% of the context window for recent messages when summarizing
 
 
+
+
 class ContextTruncation(ContextDependent):
     """
     Manages the context window of an LLM by truncating the message history
