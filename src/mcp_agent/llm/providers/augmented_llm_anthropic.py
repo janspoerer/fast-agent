@@ -160,6 +160,8 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         Override this method to use a different LLM.
         """
 
+        self.logger.debug(f"_anthropic_completion(): {(self.history)} messages.")
+
         api_key = self._api_key()
         base_url = self._base_url()
         if base_url and base_url.endswith("/v1"):
@@ -174,12 +176,18 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 "Invalid Anthropic API key",
                 "The configured Anthropic API key was rejected.\nPlease check that your API key is valid and not expired.",
             ) from e
+        
 
-        # Always include prompt messages, but only include conversation history
-        # if use_history is True
-        messages.extend(self.history.get(include_completion_history=params.use_history))
+        multipart_messages = self.history.get(include_completion_history=params.use_history)    
+
+        # Convert PromptMessageMultipart objects to MessageParam format
+        for multipart_msg in multipart_messages:
+            converted_msg = AnthropicConverter.convert_to_anthropic(multipart_msg)
+            messages.append(converted_msg)
 
         messages.append(message_param)  # message_param is the current user turn
+
+      
 
         # Get cache mode configuration
         cache_mode = self._get_cache_mode()
@@ -203,9 +211,74 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         # Note: We'll cache tools+system together by putting cache_control only on system prompt
 
         for i in range(params.max_iterations):
-
+            if i > 0 and params.truncation_strategy and params.max_context_tokens:
+                # Check if we need truncation after tool calls
+                temp_memory = SimpleMemory()
+                
+                # Convert current messages back to PromptMessageMultipart for truncation check
+                current_multipart_messages = []
+                for msg_param in messages:
+                    # Convert back to PromptMessageMultipart
+                    if isinstance(msg_param, dict):
+                        role = msg_param.get("role", "user")
+                        content_blocks = msg_param.get("content", [])
+                        text_content = ""
+                        
+                        for block in content_blocks:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                text_content += block.get("text", "")
+                            elif hasattr(block, "type") and block.type == "text":
+                                text_content += getattr(block, "text", "")
+                        
+                        # Create PromptMessageMultipart from text
+                        if text_content:
+                            if role == "user":
+                                multipart_msg = Prompt.user(TextContent(type="text", text=text_content))
+                            else:
+                                multipart_msg = Prompt.assistant(TextContent(type="text", text=text_content))
+                            current_multipart_messages.append(multipart_msg)
+                
+                temp_memory.set(current_multipart_messages)
+                
+                if self.context_truncation.needs_truncation(
+                    temp_memory,
+                    params.max_context_tokens,
+                    model,
+                    system_prompt,
+                ):
+                    self.logger.warning(f"Applying emergency truncation during iteration {i}")
+                    
+                    if params.truncation_strategy == "summarize":
+                        # Update history with truncated messages
+                        truncated_memory = await self.context_truncation.summarize_and_truncate(
+                            temp_memory,
+                            params.max_context_tokens,
+                            model,
+                            system_prompt,
+                        )
+                    else:
+                        truncated_memory = self.context_truncation.truncate(
+                            temp_memory,
+                            params.max_context_tokens,
+                            model,
+                            system_prompt,
+                        )
+                    
+                    # Update history and rebuild messages
+                    self.history.set(truncated_memory.get())
+                    
+                    # Rebuild messages array from truncated history
+                    messages = []
+                    for multipart_msg in truncated_memory.get():
+                        converted_msg = AnthropicConverter.convert_to_anthropic(multipart_msg)
+                        messages.append(converted_msg)
+                    
+                    # Re-add current message
+                    if i == 0:
+                        messages.append(message_param)
 
             self._log_chat_progress(self.chat_turn(), model=model)
+
 
             # Create base arguments dictionary
             base_args = {
@@ -265,10 +338,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                             self.logger.warning(
                                 f"Total cache blocks ({total_cache_blocks}) exceeds Anthropic limit of 4"
                             )
-                    else:
-                        self.logger.debug(
-                            f"Failed to apply conversation cache_control to positions {cache_updates['add']}"
-                        )
 
             if params.maxTokens is not None:
                 base_args["max_tokens"] = params.maxTokens
@@ -422,13 +491,37 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
                     messages.append(AnthropicConverter.create_tool_results_message(tool_results))
 
-        # Only save the new conversation messages to history if use_history is true
-        # Keep the prompt messages separate
+
         if params.use_history:
-            # Get current prompt messages
-            prompt_messages = self.history.get(include_completion_history=False)
-            new_messages = messages[len(prompt_messages) :]
-            self.history.set(new_messages)
+            # Get the original multipart messages count
+            original_multipart_count = len(self.history.get(include_completion_history=False))
+            new_message_params = messages[original_multipart_count:]
+            
+            # Convert new MessageParam objects back to PromptMessageMultipart
+            new_multipart_messages = []
+            for msg_param in new_message_params:
+                if isinstance(msg_param, dict):
+                    role = msg_param.get("role", "user")
+                    content_blocks = msg_param.get("content", [])
+                    text_content = ""
+                    
+                    for block in content_blocks:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text_content += block.get("text", "")
+                        elif hasattr(block, "type") and block.type == "text":
+                            text_content += getattr(block, "text", "")
+                    
+                    # Create PromptMessageMultipart from text
+                    if text_content:
+                        if role == "user":
+                            multipart_msg = Prompt.user(TextContent(type="text", text=text_content))
+                        else:
+                            multipart_msg = Prompt.assistant(TextContent(type="text", text=text_content))
+                        new_multipart_messages.append(multipart_msg)
+            
+            # Store PromptMessageMultipart objects in history
+            self.history.extend(new_multipart_messages)
+
 
         self._log_chat_finished(model=model)
 
@@ -445,6 +538,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         Override this method to use a different LLM.
 
         """
+
+        self.logger.debug(f"generate_messages(): {(self.history)} messages.")
+
         # Reset tool call counter for new turn
         self._reset_turn_tool_calls()
 
@@ -461,21 +557,32 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         is_template: bool = False,
     ) -> PromptMessageMultipart:
         # Check the last message role
+
         last_message = multipart_messages[-1]
+
+        self.logger.debug(f"_apply_prompt_provider_specific(): {(self.history)} messages.")
 
         # Add all previous messages to history (or all messages if last is from assistant)
         messages_to_add = (
             multipart_messages[:-1] if last_message.role == "user" else multipart_messages
         )
 
+        self.logger.debug(
+            f"Applying prompt provider specific logic with {len(messages_to_add)} messages to add"
+        )
+
         # Store original PromptMessageMultipart objects in memory
         self.history.extend(messages_to_add, is_prompt=is_template)
+
+        self.logger.debug(f"""There are now {len(self.history.get(include_completion_history=True))} messages in history.""")
 
         if last_message.role == "user":
             self.logger.debug("Last message in prompt is from user, generating assistant response")
             
             # ✅ NEW: Check truncation BEFORE conversion, while we still have PromptMessageMultipart objects
             params = self.get_request_params(request_params)
+
+            self.logger.debug("Checking if context truncation is needed...")
             if params.truncation_strategy and params.max_context_tokens:
                 model = self.default_request_params.model
                 system_prompt = self.instruction or params.systemPrompt
@@ -490,6 +597,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                     model,
                     system_prompt,
                 ):
+                    
                     if params.truncation_strategy == "summarize":
                         self.history = await self.context_truncation.summarize_and_truncate(
                             self.history,
