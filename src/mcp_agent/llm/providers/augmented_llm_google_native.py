@@ -26,15 +26,13 @@ from rich.text import Text
 from mcp_agent.core.exceptions import ProviderKeyError
 from mcp_agent.core.prompt import Prompt
 from mcp_agent.core.request_params import RequestParams
-from mcp_agent.core.agent_types import ContextTruncationMode
-from mcp_agent.llm.model_database import ModelDatabase
 
 ## Internal -- LLM
 from mcp_agent.llm.augmented_llm import AugmentedLLM
+from mcp_agent.llm.context_truncation_and_summarization import ContextTruncation
 from mcp_agent.llm.provider_types import Provider
 from mcp_agent.llm.providers.google_converter import GoogleConverter
 from mcp_agent.llm.usage_tracking import TurnUsage
-from mcp_agent.llm.context_truncation_and_summarization import ContextTruncation
 
 ## Internal -- MCP
 from mcp_agent.mcp.interfaces import ModelT
@@ -213,8 +211,8 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
                     
             try:
                 conversation_history = self._converter.convert_to_google_content(conversation_history)
-            except:
-                self.logger.info(f"conversion_history was already in Google format.")
+            except Exception as e:
+                self.logger.info(f"conversion_history was already in Google format ({e}).")
                 pass
 
         config = self._converter.convert_request_params_to_google_config(params)

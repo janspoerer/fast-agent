@@ -2,15 +2,17 @@
 Context truncation manager for LLM conversations.
 """
 # region Imports -- Internal Imports
-import tiktoken
-from typing import List, Optional, Any
-# endregion
+from typing import Any, List, Optional
 
+import tiktoken
+
+# endregion
 # region Imports -- External Imports
 from mcp_agent.context_dependent import ContextDependent
+from mcp_agent.core.agent_types import ContextTruncationMode
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
-from mcp_agent.core.agent_types import ContextTruncationMode
+
 # endregion
 
 
