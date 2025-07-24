@@ -158,9 +158,15 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
                 all_content_responses.extend(content_blocks)
                 if any(isinstance(c, TextContent) and c.text for c in content_blocks):
                     await self.show_assistant_message("".join(c.text for c in content_blocks if isinstance(c, TextContent)))
-                
-                self.logger.debug(f"Iteration {i}: Stopping because finish_reason is {candidate.finish_reason}")
-                break
+                self.logger.debug(f"Iteration {i}: Stopping because finish_reason is '{candidate.finish_reason}'")
+                break # Correctly breaks the loop
+
+            # ADD THIS BLOCK
+            elif action == self.ACTIONS.CONTINUE_WITH_TOOLS:
+                tool_requests = [block for block in content_blocks if isinstance(block, CallToolRequestParams)]
+                tool_results_for_api = await self._execute_tool_calls(tool_requests, available_tools)
+                turn_conversation_history.extend(tool_results_for_api)
+                # Loop continues to the next iteration
 
             else:
                 self.logger.warning(f"Exceeded max iterations ({params.max_iterations}) without stopping.")
@@ -180,7 +186,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         structured_model: Optional[Type[ModelT]] = None,
     ) -> dict:
         """Assembles the final dictionary of arguments for the Gemini API call."""
-        config = self._converter.convert_Request_params_to_google_config(params)
+        config = self._converter.convert_request_params_to_google_config(params)
         tool_config = None
 
         if tools: 
@@ -217,7 +223,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
 
             if hasattr(api_response, "usage_metadata") and api_response.usage_metadata:
                 turn_usage = TurnUsage.from_google(
-                    api_response.usage_meta,
+                    api_response.usage_metadata,
                     payload["model"],
                 )
                 self._finalize_turn_usage(turn_usage=turn_usage)
@@ -244,7 +250,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         text_blocks = [block for block in assistant_message_content_parts if isinstance(block, TextContent)]
         tool_requests = [block for block in assistant_message_content_parts if isinstance(block, CallToolRequestParams)]
 
-        if candidate.finish_reson == "TOOL_USE" and tool_requests:  # Determine next action
+        if candidate.finish_reason == "TOOL_USE" and tool_requests:  # Determine next action
             return self.ACTIONS.CONTINUE_WITH_TOOLS, tool_requests, raw_assistant_message
         
         else: 
@@ -310,10 +316,10 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         )
 
         # 3. Update history with the generated messages (is_prompt=False)
-        new_multipart_messages = self._converter_convert_from_google_content_list(new_history_messages)
+        new_multipart_messages = self._converter._converter_convert_from_google_content_list(new_history_messages)
         self.history.extend(new_multipart_messages, is_prompt=False)
 
-        self._log_chart_finished(model=params.model)
+        self._log_chat_finished(model=params.model)
         return Prompt.assistant(*final_content)
 
     async def _apply_prompt_provider_specific_structured(
@@ -358,76 +364,6 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
                 return None, assistant_msg
 
         return None, assistant_msg
-
-
-        # Set up Gemini config for structured output
-        def _get_schema_type(model):
-            # Try to get the type annotation for the model (for list[...] etc)
-            # Fallback to dict schema if not available
-            try:
-                return model
-            except Exception:
-                return None
-
-        # Use the schema as a dict or as a type, as Gemini supports both
-        response_schema = _get_schema_type(model)
-        if schema is not None:
-            response_schema = schema
-
-        # Set config for structured output
-        generate_content_config = self._converter.convert_request_params_to_google_config(
-            request_params
-        )
-        generate_content_config.response_mime_type = "application/json"
-        generate_content_config.response_schema = response_schema
-
-        # Convert messages to google.genai format
-        conversation_history = self._converter.convert_to_google_content(multipart_messages)
-
-        # Call Gemini API
-        try:
-            api_response = await self._google_client.aio.models.generate_content(
-                model=request_params.model,
-                contents=conversation_history,
-                config=generate_content_config,
-            )
-        except Exception as e:
-            self.logger.error(f"Error during Gemini structured call: {e}")
-            # Return None and a dummy assistant message
-            return None, Prompt.assistant(f"Error: {e}")
-
-        # Parse the response as JSON and validate against the model
-        if not api_response.candidates or not api_response.candidates[0].content.parts:
-            return None, Prompt.assistant("No structured response returned.")
-
-        # Try to extract the JSON from the first part
-        text = None
-        for part in api_response.candidates[0].content.parts:
-            if part.text:
-                text = part.text
-                break
-        if text is None:
-            return None, Prompt.assistant("No structured text returned.")
-
-        try:
-            json_data = json.loads(text)
-            validated_model = model.model_validate(json_data)
-            # Update LLM history with user and assistant messages for correct history tracking
-            # Add user message(s)
-            for msg in multipart_messages:
-                self.history.append(msg)
-            # Add assistant message
-            assistant_msg = Prompt.assistant(text)
-            self.history.append(assistant_msg)
-            return validated_model, assistant_msg
-        except Exception as e:
-            self.logger.warning(f"Failed to parse structured response: {e}")
-            # Still update history for consistency
-            for msg in multipart_messages:
-                self.history.append(msg)
-            assistant_msg = Prompt.assistant(text)
-            self.history.append(assistant_msg)
-            return None, assistant_msg
 
     # --------------------------------------------------------------------------
     # Pro and Post Tool Call
