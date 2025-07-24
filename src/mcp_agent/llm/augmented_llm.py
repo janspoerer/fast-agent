@@ -110,6 +110,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
 
     class _Actions:
         STOP = "Stop"  # Making the actions available like so: self.ACTIONS.STOP
+        CONTINUE_WITH_TOOLS = "CONTINUE_WITH_TOOLS"
     ACTIONS = _Actions()
 
     provider: Provider | None = None
