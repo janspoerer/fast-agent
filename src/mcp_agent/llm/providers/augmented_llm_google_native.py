@@ -26,12 +26,15 @@ from rich.text import Text
 from mcp_agent.core.exceptions import ProviderKeyError
 from mcp_agent.core.prompt import Prompt
 from mcp_agent.core.request_params import RequestParams
+from mcp_agent.core.agent_types import ContextTruncationMode
+from mcp_agent.llm.model_database import ModelDatabase
 
 ## Internal -- LLM
 from mcp_agent.llm.augmented_llm import AugmentedLLM
 from mcp_agent.llm.provider_types import Provider
 from mcp_agent.llm.providers.google_converter import GoogleConverter
 from mcp_agent.llm.usage_tracking import TurnUsage
+from mcp_agent.llm.context_truncation_and_summarization import ContextTruncation
 
 ## Internal -- MCP
 from mcp_agent.mcp.interfaces import ModelT
@@ -63,6 +66,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         super().__init__(*args, provider=Provider.GOOGLE, **kwargs)
         self._google_client = self._initialize_google_client()
         self._converter = GoogleConverter()
+        self.truncation_manager = ContextTruncation(self.context)
 
     def _initialize_google_client(self) -> genai.Client:
         """
@@ -103,16 +107,11 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
 
     def _initialize_default_params(self, kwargs: dict) -> RequestParams:
         """Initialize Google-specific default parameters."""
-        chosen_model = kwargs.get("model", DEFAULT_GOOGLE_MODEL)
-
-        return RequestParams(
-            model=chosen_model,
-            systemPrompt=self.instruction,  # System instruction will be mapped in _google_completion
-            parallel_tool_calls=True,  # Assume parallel tool calls are supported by default with native API
-            max_iterations=20,
-            use_history=True,
-            maxTokens=65536,  # Default max tokens for Google models
-        )
+        base_params = super()._initialize_default_params(kwargs)  # Get base defaults from parent (includes ModelDatabase lookup)
+        base_params.model = kwargs.get("model", DEFAULT_GOOGLE_MODEL)
+        base_params.maxTokens = 65536  # Override the parent's default
+    
+        return base_params
 
     async def _completion_orchestrator(
             self,
@@ -135,7 +134,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
             # 1. Prepare the request for the API
             available_tools = await self.aggregator.list_tools()
             google_tools = self._converter.convert_to_google_tools(available_tools.tools)
-            payload = self._prepare_request_payload(
+            payload = await self._prepare_request_payload(
                 conversation_history=turn_conversation_history,
                 params=params,
                 tools=google_tools,
@@ -178,14 +177,46 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
     # Helper Methods (New & Refactored)
     # --------------------------------------------------------------------------
 
-    def _prepare_request_payload(
+    async def _prepare_request_payload(
         self,
         conversation_history: List[types.Content],
         params: RequestParams,
         tools: List[types.Tool],
         structured_model: Optional[Type[ModelT]] = None,
     ) -> dict:
-        """Assembles the final dictionary of arguments for the Gemini API call."""
+        """Assembles the final dictionary of arguments for the Gemini API call, applying truncation first."""
+
+        initial_length = len(conversation_history)
+        
+        if hasattr(params, "context_truncation_or_summarization_mode") and params.context_truncation_or_summarization_mode:
+            # 1. Convert from Google's native format to your internal format
+            # Note: You might need a `convert_from_google_content_list` method on your converter
+            conversation_history = self._converter.convert_from_google_content_list(conversation_history)
+
+            if hasattr(params, params.context_truncation_or_summarization_limit) and params.context_truncation_or_summarization_limit:
+                token_limit_for_truncation = params.context_truncation_or_summarization_limit
+            else:
+                token_limit_for_truncation = params.maxTokens
+
+            # 2. Call the truncation manager (now awaited)
+            truncated_multipart = await self.truncation_manager.summarize_or_truncate_if_required(
+                messages=conversation_history,
+                context_truncation_or_summarization_mode=params.truncation_mode,
+                limit=token_limit_for_truncation,
+                model=params.model,
+                system_prompt=params.systemPrompt or self.instruction,
+            )
+
+            # 3. Convert back to Google's native format if changes were made
+            if len(truncated_multipart) < len(conversation_history):
+                self.logger.info(f"History truncated from {initial_length} to {len(conversation_history)} messages.")
+                    
+            try:
+                conversation_history = self._converter.convert_to_google_content(conversation_history)
+            except:
+                self.logger.info(f"conversion_history was already in Google format.")
+                pass
+
         config = self._converter.convert_request_params_to_google_config(params)
         tool_config = None
 
@@ -198,6 +229,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
             config.response_mime_type = "application/json"
             config.response_schema = structured_model.model_json_schema()
             tools = None  # In JSON mode, no other tools are used.
+    
 
         return {
             "model": params.model,
@@ -312,7 +344,9 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         # 2. Call the orchestrator
         final_content, new_history_messages = await self._completion_orchestrator(
             messages_for_turn=messages_for_turn,
-            params=params
+            params=params,
+            # Pass the raw multipart messages for truncation logic
+            multipart_messages=self.history.get(...)
         )
 
         # 3. Update history with the generated messages (is_prompt=False)

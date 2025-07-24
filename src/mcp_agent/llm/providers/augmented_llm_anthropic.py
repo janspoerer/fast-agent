@@ -1,3 +1,4 @@
+# region External Imports
 import json
 from typing import (
     TYPE_CHECKING,
@@ -8,25 +9,9 @@ from typing import (
     Type,
     cast,
 )
-
 from mcp.types import TextContent
-
-from mcp_agent.core.prompt import Prompt
-from mcp_agent.event_progress import ProgressAction
-from mcp_agent.llm.provider_types import Provider
-from mcp_agent.llm.providers.multipart_converter_anthropic import (
-    AnthropicConverter,
-)
-from mcp_agent.llm.providers.sampling_converter_anthropic import (
-    AnthropicSamplingConverter,
-)
-from mcp_agent.llm.usage_tracking import TurnUsage
-from mcp_agent.mcp.interfaces import ModelT
-from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
-
 if TYPE_CHECKING:
     from mcp import ListToolsResult
-
 
 from anthropic import APIError, AsyncAnthropic, AuthenticationError
 from anthropic.lib.streaming import AsyncMessageStream
@@ -47,13 +32,30 @@ from mcp.types import (
     ContentBlock,
 )
 from rich.text import Text
+# endregion
 
+# region Internal Imports
+## Internal Imports -- Core
+from mcp_agent.core.prompt import Prompt
+## Internal Imports -- Progress
+from mcp_agent.event_progress import ProgressAction
+## Internal Imports -- LLM
+from mcp_agent.llm.provider_types import Provider
+from mcp_agent.llm.providers.multipart_converter_anthropic import AnthropicConverter
+from mcp_agent.llm.context_truncation_and_summarization import ContextTruncation
+from mcp_agent.llm.providers.sampling_converter_anthropic import AnthropicSamplingConverter
+from mcp_agent.llm.usage_tracking import TurnUsage
+## Internal Imports -- MCP
+from mcp_agent.mcp.interfaces import ModelT
+from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.core.exceptions import ProviderKeyError
 from mcp_agent.llm.augmented_llm import (
     AugmentedLLM,
     RequestParams,
 )
 from mcp_agent.logging.logger import get_logger
+# endregion
+
 
 DEFAULT_ANTHROPIC_MODEL = "claude-3-7-sonnet-latest"
 
@@ -89,6 +91,8 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         )
 
         self.client = self._initialize_client()  # Initialize the client once and reuse it
+        self.converter = AnthropicConverter()
+        self.truncation_manager = ContextTruncation(self.context)
 
     def _initialize_client(self) -> AsyncAnthropic:
         """Initializes and returns the Anthropic API client."""
@@ -109,6 +113,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         """Initialize Anthropic-specific default parameters"""
         base_params = super()._initialize_default_params(kwargs)  # Get base defaults from parent (includes ModelDatabase lookup)
         base_params.model = kwargs.get("model", DEFAULT_ANTHROPIC_MODEL)  # Override with Anthropic-specific settings
+
         return base_params
 
     def _base_url(self) -> Optional[str]:
@@ -457,10 +462,34 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         self.logger.debug(f"Anthropic cache_mode: {cache_mode}")
         all_content_responses: List[ContentBlock] = []
 
-        # Note: We'll cache tools+system together by putting cache_control only on system prompt
-
         for i in range(params.max_iterations):
             self._log_chat_progress(self.chat_turn(), model=model)
+
+            if hasattr(params, "context_truncation_or_summarization_mode") and params.context_truncation_or_summarization_mode:
+                # 1. Convert from Anthropic's format to your internal MCP format
+                multipart_messages = self.converter.convert_from_anthropic_list(messages)
+
+                if hasattr(params, params.context_truncation_or_summarization_limit) and params.context_truncation_or_summarization_limit:
+                    token_limit_for_truncation = params.context_truncation_or_summarization_limit
+                else:
+                    token_limit_for_truncation = params.maxTokens
+
+                # 2. Call the truncation manager to truncate the history if needed
+                truncated_multipart = await self.truncation_manager.summarize_or_truncate_if_required(
+                    messages=multipart_messages,
+                    context_truncation_or_summarization_mode=params.context_truncation_or_summarization_mode,
+                    limit=token_limit_for_truncation,
+                    model=params.model,
+                    system_prompt=system_prompt,
+                )
+
+                # 3. If truncation occurred, convert back and update the messages list
+                if len(truncated_multipart) < len(multipart_messages):
+                    self.logger.info(
+                        f"History truncated from {len(multipart_messages)} to {len(truncated_multipart)} messages."
+                    )
+                    messages = self.converter.convert_to_anthropic_list(truncated_multipart)
+            
 
             # 2. Apply Caching
             final_system_prompt = self._apply_system_cache(system_prompt=system_prompt, cache_mode=cache_mode)
