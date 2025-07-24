@@ -1,11 +1,11 @@
 import json
 from typing import (
-    TYPE_CHECKING, 
-    Any, 
-    List, 
-    Tuple, 
-    Type,
+    TYPE_CHECKING,
+    Any,
+    List,
     Optional,
+    Tuple,
+    Type,
     cast,
 )
 
@@ -28,11 +28,7 @@ if TYPE_CHECKING:
     from mcp import ListToolsResult
 
 
-from anthropic import (
-    APIError, 
-    AsyncAnthropic, 
-    AuthenticationError
-)
+from anthropic import APIError, AsyncAnthropic, AuthenticationError
 from anthropic.lib.streaming import AsyncMessageStream
 from anthropic.types import (
     Message,
@@ -550,7 +546,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             anthropic_msg = AnthropicConverter.convert_to_anthropic(msg)
             # Apply caching to template messages
             if is_template and cache_mode in ["prompt", "auto"] and isinstance(anthropic_msg.get("content"), list):
-                content_list = cast(list, anthropic_msg["content"])
+                content_list = cast("list", anthropic_msg["content"])
                 if content_list and isinstance(content_list[-1], dict):
                     content_list[-1]["cache_control"] = {"type": "ephemeral"}
                     self.logger.debug(f"Applied cache_control to template message with role {anthropic_msg.get('role')}")

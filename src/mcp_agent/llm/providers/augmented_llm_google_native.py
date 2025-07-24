@@ -1,14 +1,15 @@
 # region External Imports
 ## External Imports -- General Imports
 import json
-from rich.text import Text
-from typing import List, Tuple, Type, Optional
+from typing import List, Optional, Tuple, Type
+
 ## External Imports -- Provider-Specific Imports
 from google import genai
 from google.genai import (
     errors,
     types,
 )
+
 ## External Imports -- MCP
 from mcp.types import (
     CallToolRequest,
@@ -17,21 +18,25 @@ from mcp.types import (
     ContentBlock,
     TextContent,
 )
-# endregion
+from rich.text import Text
 
+# endregion
 # region Internal Imports
 ## Internal -- Core
 from mcp_agent.core.exceptions import ProviderKeyError
 from mcp_agent.core.prompt import Prompt
 from mcp_agent.core.request_params import RequestParams
+
 ## Internal -- LLM
 from mcp_agent.llm.augmented_llm import AugmentedLLM
 from mcp_agent.llm.provider_types import Provider
 from mcp_agent.llm.providers.google_converter import GoogleConverter
 from mcp_agent.llm.usage_tracking import TurnUsage
+
 ## Internal -- MCP
 from mcp_agent.mcp.interfaces import ModelT
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
+
 #endregion
 
 # Define default model and potentially other Google-specific defaults
@@ -140,7 +145,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
             # 2. Execute the API call
             api_response = await self._execute_api_call(payload)
             if not api_response.candidates:
-                self.logger.warning(f"No candidates returned from Gemini API.")
+                self.logger.warning("No candidates returned from Gemini API.")
                 break
 
             # 3. Process the response to determine the next action
@@ -254,7 +259,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         tool_results_for_next_turn = []
 
         if tool_requests:
-            await self.show_assistant_message(Text(f"Assistant requested tool calls...", style="dim green italic"))
+            await self.show_assistant_message(Text("Assistant requested tool calls...", style="dim green italic"))
 
         for tool_call_params in tool_requests:
             tool_call_request = CallToolRequest(method="tools/call", params=tool_call_params)
