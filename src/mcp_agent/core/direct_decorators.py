@@ -6,6 +6,7 @@ for creating agents in the DirectFastAgent framework.
 
 import inspect
 from functools import wraps
+from pathlib import Path
 from typing import (
     Awaitable,
     Callable,
@@ -21,6 +22,7 @@ from typing import (
 )
 
 from mcp.client.session import ElicitationFnT
+from pydantic import AnyUrl
 
 from mcp_agent.agents.agent import AgentConfig
 from mcp_agent.agents.workflow.router_agent import (
@@ -83,6 +85,91 @@ class DecoratedEvaluatorOptimizerProtocol(DecoratedAgentProtocol[P, R], Protocol
 
     _generator: str
     _evaluator: str
+
+
+def _fetch_url_content(url: str) -> str:
+    """
+    Fetch content from a URL.
+
+    Args:
+        url: The URL to fetch content from
+
+    Returns:
+        The text content from the URL
+
+    Raises:
+        requests.RequestException: If the URL cannot be fetched
+        UnicodeDecodeError: If the content cannot be decoded as UTF-8
+    """
+    import requests
+
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()  # Raise exception for HTTP errors
+    return response.text
+
+
+def _apply_templates(text: str) -> str:
+    """
+    Apply template substitutions to instruction text.
+
+    Supported templates:
+        {{currentDate}} - Current date in format "24 July 2025"
+        {{url:https://...}} - Content fetched from the specified URL
+
+    Args:
+        text: The text to process
+
+    Returns:
+        Text with template substitutions applied
+
+    Raises:
+        requests.RequestException: If a URL in {{url:...}} cannot be fetched
+        UnicodeDecodeError: If URL content cannot be decoded as UTF-8
+    """
+    import re
+    from datetime import datetime
+
+    # Apply {{currentDate}} template
+    current_date = datetime.now().strftime("%d %B %Y")
+    text = text.replace("{{currentDate}}", current_date)
+
+    # Apply {{url:...}} templates
+    url_pattern = re.compile(r"\{\{url:(https?://[^}]+)\}\}")
+
+    def replace_url(match):
+        url = match.group(1)
+        return _fetch_url_content(url)
+
+    text = url_pattern.sub(replace_url, text)
+
+    return text
+
+
+def _resolve_instruction(instruction: str | Path | AnyUrl) -> str:
+    """
+    Resolve instruction from either a string, Path, or URL with template support.
+
+    Args:
+        instruction: Either a string instruction, Path to a file, or URL containing the instruction
+
+    Returns:
+        The resolved instruction string with templates applied
+
+    Raises:
+        FileNotFoundError: If the Path doesn't exist
+        PermissionError: If the Path can't be read
+        UnicodeDecodeError: If the file/URL content can't be decoded as UTF-8
+        requests.RequestException: If the URL cannot be fetched
+    """
+    if isinstance(instruction, Path):
+        text = instruction.read_text(encoding="utf-8")
+    elif isinstance(instruction, AnyUrl):
+        text = _fetch_url_content(str(instruction))
+    else:
+        text = instruction
+
+    # Apply template substitutions
+    return _apply_templates(text)
 
 
 def _decorator_impl(
@@ -183,9 +270,9 @@ def _decorator_impl(
 def agent(
     self,
     name: str = "default",
-    instruction_or_kwarg: Optional[str] = None,
+    instruction_or_kwarg: Optional[str | Path | AnyUrl] = None,
     *,
-    instruction: str = "You are a helpful agent.",
+    instruction: str | Path | AnyUrl = "You are a helpful agent.",
     servers: List[str] = [],
     tools: Optional[Dict[str, List[str]]] = None,
     resources: Optional[Dict[str, List[str]]] = None,
@@ -220,7 +307,10 @@ def agent(
     Returns:
         A decorator that registers the agent with proper type annotations
     """
-    final_instruction = instruction_or_kwarg if instruction_or_kwarg is not None else instruction
+    final_instruction_raw = (
+        instruction_or_kwarg if instruction_or_kwarg is not None else instruction
+    )
+    final_instruction = _resolve_instruction(final_instruction_raw)
 
     return _decorator_impl(
         self,
@@ -245,9 +335,9 @@ def custom(
     self,
     cls,
     name: str = "default",
-    instruction_or_kwarg: Optional[str] = None,
+    instruction_or_kwarg: Optional[str | Path | AnyUrl] = None,
     *,
-    instruction: str = "You are a helpful agent.",
+    instruction: str | Path | AnyUrl = "You are a helpful agent.",
     servers: List[str] = [],
     tools: Optional[Dict[str, List[str]]] = None,
     resources: Optional[Dict[str, List[str]]] = None,
@@ -277,7 +367,10 @@ def custom(
     Returns:
         A decorator that registers the agent with proper type annotations
     """
-    final_instruction = instruction_or_kwarg if instruction_or_kwarg is not None else instruction
+    final_instruction_raw = (
+        instruction_or_kwarg if instruction_or_kwarg is not None else instruction
+    )
+    final_instruction = _resolve_instruction(final_instruction_raw)
 
     return _decorator_impl(
         self,
@@ -311,7 +404,7 @@ def orchestrator(
     name: str,
     *,
     agents: List[str],
-    instruction: str = DEFAULT_INSTRUCTION_ORCHESTRATOR,
+    instruction: str | Path | AnyUrl = DEFAULT_INSTRUCTION_ORCHESTRATOR,
     model: Optional[str] = None,
     request_params: RequestParams | None = None,
     use_history: bool = False,
@@ -341,6 +434,7 @@ def orchestrator(
     """
 
     # Create final request params with plan_iterations
+    resolved_instruction = _resolve_instruction(instruction)
 
     return cast(
         "Callable[[AgentCallable[P, R]], DecoratedOrchestratorProtocol[P, R]]",
@@ -348,7 +442,7 @@ def orchestrator(
             self,
             AgentType.ORCHESTRATOR,
             name=name,
-            instruction=instruction,
+            instruction=resolved_instruction,
             servers=[],  # Orchestrators don't connect to servers directly
             model=model,
             use_history=use_history,
@@ -368,7 +462,7 @@ def router(
     name: str,
     *,
     agents: List[str],
-    instruction: Optional[str] = None,
+    instruction: Optional[str | Path | AnyUrl] = None,
     servers: List[str] = [],
     tools: Optional[Dict[str, List[str]]] = None,
     resources: Optional[Dict[str, List[str]]] = None,
@@ -400,6 +494,7 @@ def router(
     Returns:
         A decorator that registers the router with proper type annotations
     """
+    resolved_instruction = _resolve_instruction(instruction or ROUTING_SYSTEM_INSTRUCTION)
 
     return cast(
         "Callable[[AgentCallable[P, R]], DecoratedRouterProtocol[P, R]]",
@@ -407,7 +502,7 @@ def router(
             self,
             AgentType.ROUTER,
             name=name,
-            instruction=instruction or ROUTING_SYSTEM_INSTRUCTION,
+            instruction=resolved_instruction,
             servers=servers,
             model=model,
             use_history=use_history,
@@ -429,7 +524,7 @@ def chain(
     name: str,
     *,
     sequence: List[str],
-    instruction: Optional[str] = None,
+    instruction: Optional[str | Path | AnyUrl] = None,
     cumulative: bool = False,
     default: bool = False,
 ) -> Callable[[AgentCallable[P, R]], DecoratedChainProtocol[P, R]]:
@@ -456,6 +551,7 @@ def chain(
     You are a chain that processes requests through a series of specialized agents in sequence.
     Pass the output of each agent to the next agent in the chain.
     """
+    resolved_instruction = _resolve_instruction(instruction or default_instruction)
 
     return cast(
         "Callable[[AgentCallable[P, R]], DecoratedChainProtocol[P, R]]",
@@ -463,7 +559,7 @@ def chain(
             self,
             AgentType.CHAIN,
             name=name,
-            instruction=instruction or default_instruction,
+            instruction=resolved_instruction,
             sequence=sequence,
             cumulative=cumulative,
             default=default,
@@ -477,7 +573,7 @@ def parallel(
     *,
     fan_out: List[str],
     fan_in: str | None = None,
-    instruction: Optional[str] = None,
+    instruction: Optional[str | Path | AnyUrl] = None,
     include_request: bool = True,
     default: bool = False,
 ) -> Callable[[AgentCallable[P, R]], DecoratedParallelProtocol[P, R]]:
@@ -499,6 +595,7 @@ def parallel(
     You are a parallel processor that executes multiple agents simultaneously
     and aggregates their results.
     """
+    resolved_instruction = _resolve_instruction(instruction or default_instruction)
 
     return cast(
         "Callable[[AgentCallable[P, R]], DecoratedParallelProtocol[P, R]]",
@@ -506,7 +603,7 @@ def parallel(
             self,
             AgentType.PARALLEL,
             name=name,
-            instruction=instruction or default_instruction,
+            instruction=resolved_instruction,
             servers=[],  # Parallel agents don't connect to servers directly
             fan_in=fan_in,
             fan_out=fan_out,
@@ -522,7 +619,7 @@ def evaluator_optimizer(
     *,
     generator: str,
     evaluator: str,
-    instruction: Optional[str] = None,
+    instruction: Optional[str | Path | AnyUrl] = None,
     min_rating: str = "GOOD",
     max_refinements: int = 3,
     default: bool = False,
@@ -547,6 +644,7 @@ def evaluator_optimizer(
     evaluated for quality, and then refined based on specific feedback until
     it reaches an acceptable quality standard.
     """
+    resolved_instruction = _resolve_instruction(instruction or default_instruction)
 
     return cast(
         "Callable[[AgentCallable[P, R]], DecoratedEvaluatorOptimizerProtocol[P, R]]",
@@ -554,7 +652,7 @@ def evaluator_optimizer(
             self,
             AgentType.EVALUATOR_OPTIMIZER,
             name=name,
-            instruction=instruction or default_instruction,
+            instruction=resolved_instruction,
             servers=[],  # Evaluator-optimizer doesn't connect to servers directly
             generator=generator,
             evaluator=evaluator,
