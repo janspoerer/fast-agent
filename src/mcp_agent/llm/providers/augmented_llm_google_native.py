@@ -41,7 +41,7 @@ from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 #endregion
 
 # Define default model and potentially other Google-specific defaults
-DEFAULT_GOOGLE_MODEL = "gemini-2.0-flash"
+DEFAULT_GOOGLE_MODEL = "gemini-2.5-flash"
 
 
 class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
@@ -58,57 +58,57 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         AugmentedLLM.PARAM_USE_HISTORY,  # Handled by AugmentedLLM base / this class's logic
         AugmentedLLM.PARAM_MAX_ITERATIONS,  # Handled by this class's loop
         # Add any other OpenAI-specific params not applicable to google.genai
+        AugmentedLLM.PARAM_CONTEXT_TRUNCATION_MODE,
+        AugmentedLLM.PARAM_CONTEXT_TRUNCATION_LENGTH_LIMIT,
     }.union(AugmentedLLM.BASE_EXCLUDE_FIELDS)
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, provider=Provider.GOOGLE, **kwargs)
-        self._google_client = self._initialize_google_client()
+        self.client = self._initialize_google_client()
         self._converter = GoogleConverter()
-        self.truncation_manager = ContextTruncation(self.context)
+        self.truncation_manager = ContextTruncation(
 
-    def _initialize_google_client(self) -> genai.Client:
-        """
-        Initializes the google.genai client.
+        )
 
-        Reads Google API key or Vertex AI configuration from context config.
+    def _initialize_google_client(self) -> None:
         """
-        try:
-            if not self._api_key(): #  _api_key() from base class.
-                raise ProviderKeyError(
-                    "Google API key not found.", "Please configure your Google API key."
-                )
-            
-            if ( #  Check if Vertex or Gemini API
-                self.context
-                and self.context.config
-                and hasattr(self.context.config, "google")
-                and hasattr(self.context.config.google, "vertex_ai")
-                and self.context.config.google.vertex_ai.enabled
-            ):
-                vertex_config = self.context.config.google.vertex_ai
-                return genai.Client(
-                    vertexai=True,
-                    project=vertex_config.project_id,
-                    location=vertex_config.location,
-                    # Add other Vertex AI specific options if needed
-                    # http_options=types.HttpOptions(api_version='v1') # Example for v1 API
-                )
-            else:
-                # Default to Gemini Developer API
-                return genai.Client(
-                    api_key=self._api_key(),
-                    # http_options=types.HttpOptions(api_version='v1') # Example for v1 API
-                )
-        except Exception as e:
-            # Catch potential initialization errors and raise ProviderKeyError
-            raise ProviderKeyError("Failed to initialize Google GenAI client.", str(e)) from e
+        Returns a Google client.
+        """
+        api_key = self._api_key()
+
+        if not api_key:
+            raise ProviderKeyError(
+                "Google API key not found.", "Please configure your GOOGLE_API_KEY environment variable for the standard API path."
+            )
+        
+        if (
+            self.context
+            and self.context.config
+            and hasattr(self.context.config, "google")
+            and hasattr(self.context.config.google, "vertex_ai")
+            and self.context.config.google.vertex_ai.enabled
+        ):
+
+            self.logger.debug("Using Vertex AI path.")
+            vertex_config = self.context.config.google.vertex_ai
+            client = genai.Client(
+                vertexai=True,
+                project=vertex_config.project_id,
+                location=vertex_config.location,
+            )
+
+        else:
+
+            self.logger.debug("Using standard Gemini API path for model.")
+            client = genai.Client(api_key=api_key)
+
+        return client
 
     def _initialize_default_params(self, kwargs: dict) -> RequestParams:
-        """Initialize Google-specific default parameters."""
+        """Initialize Anthropic-specific default parameters"""
         base_params = super()._initialize_default_params(kwargs)  # Get base defaults from parent (includes ModelDatabase lookup)
-        base_params.model = kwargs.get("model", DEFAULT_GOOGLE_MODEL)
-        base_params.maxTokens = 65536  # Override the parent's default
-    
+        base_params.model = kwargs.get("model", DEFAULT_GOOGLE_MODEL)  # Override with Anthropic-specific settings
+
         return base_params
 
     async def _completion_orchestrator(
@@ -125,13 +125,13 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         """
         all_content_responses: List[ContentBlock] = []
         turn_conversation_history = list(messages_for_turn)
+        available_tools = await self.aggregator.list_tools()
+        google_tools = self._converter.convert_to_google_tools(available_tools.tools)
 
         for i in range(params.max_iterations):
             self._log_chat_progress(self.chat_turn(), model=params.model)
 
             # 1. Prepare the request for the API
-            available_tools = await self.aggregator.list_tools()
-            google_tools = self._converter.convert_to_google_tools(available_tools.tools)
             payload = await self._prepare_request_payload(
                 conversation_history=turn_conversation_history,
                 params=params,
@@ -147,32 +147,32 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
 
             # 3. Process the response to determine the next action
             candidate = api_response.candidates[0]
-            action, content_blocks, assistant_message= self._process_response(candidate)
+            action, content_blocks, assistant_message = self._process_response(candidate)
             turn_conversation_history.append(assistant_message)
 
             # 4. Execute the determined action
             if action == self.ACTIONS.STOP:
                 all_content_responses.extend(content_blocks)
                 if any(isinstance(c, TextContent) and c.text for c in content_blocks):
-                    await self.show_assistant_message("".join(c.text for c in content_blocks if isinstance(c, TextContent)))
+                    text_to_show = "".join(c.text for c in content_blocks if isinstance(c, TextContent))
+                    await self.show_assistant_message(text_to_show)
                 self.logger.debug(f"Iteration {i}: Stopping because finish_reason is '{candidate.finish_reason}'")
-                break # Correctly breaks the loop
+                break 
 
-            # ADD THIS BLOCK
             elif action == self.ACTIONS.CONTINUE_WITH_TOOLS:
                 tool_requests = [block for block in content_blocks if isinstance(block, CallToolRequestParams)]
                 tool_results_for_api = await self._execute_tool_calls(tool_requests, available_tools)
                 turn_conversation_history.extend(tool_results_for_api)
-                # Loop continues to the next iteration
 
-            else:
-                self.logger.warning(f"Exceeded max iterations ({params.max_iterations}) without stopping.")
+
+        else:
+            self.logger.warning(f"Exceeded max iterations ({params.max_iterations}) without stopping.")
 
         new_messages = turn_conversation_history[len(messages_for_turn):] # Return the final content and the new messages generated during this turn.
         return all_content_responses, new_messages
 
     # --------------------------------------------------------------------------
-    # Helper Methods (New & Refactored)
+    # Helper Methods 
     # --------------------------------------------------------------------------
 
     async def _prepare_request_payload(
@@ -183,37 +183,28 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         structured_model: Optional[Type[ModelT]] = None,
     ) -> dict:
         """Assembles the final dictionary of arguments for the Gemini API call, applying truncation first."""
-
-        initial_length = len(conversation_history)
         
-        if hasattr(params, "context_truncation_or_summarization_mode") and params.context_truncation_or_summarization_mode:
-            # 1. Convert from Google's native format to your internal format
-            # Note: You might need a `convert_from_google_content_list` method on your converter
-            conversation_history = self._converter.convert_from_google_content_list(conversation_history)
+        # 1. Convert from Google's native format to Multipart format for processing
+        multipart_history: List[PromptMessageMultipart] = self._converter.convert_from_google_content_list(conversation_history)
+        
+        # 2. Apply truncation logic
+        if hasattr(params, "context_truncation_mode") and params.context_truncation_mode:
+            token_limit_for_truncation = params.context_truncation_length_limit or params.maxTokens
 
-            if hasattr(params, params.context_truncation_or_summarization_limit) and params.context_truncation_or_summarization_limit:
-                token_limit_for_truncation = params.context_truncation_or_summarization_limit
-            else:
-                token_limit_for_truncation = params.maxTokens
-
-            # 2. Call the truncation manager (now awaited)
-            truncated_multipart = await self.truncation_manager.summarize_or_truncate_if_required(
-                messages=conversation_history,
-                context_truncation_or_summarization_mode=params.truncation_mode,
+            truncated_multipart = await self.truncation_manager.truncate_if_required(
+                messages=multipart_history,
+                truncation_mode=params.context_truncation_mode,
                 limit=token_limit_for_truncation,
-                model=params.model,
+                model_name=params.model,
                 system_prompt=params.systemPrompt or self.instruction,
+                provider=self,
             )
+            if len(truncated_multipart) < len(multipart_history):
+                self.logger.info(f"History truncated from {len(multipart_history)} to {len(truncated_multipart)} messages.")
+                multipart_history = truncated_multipart
 
-            # 3. Convert back to Google's native format if changes were made
-            if len(truncated_multipart) < len(conversation_history):
-                self.logger.info(f"History truncated from {initial_length} to {len(conversation_history)} messages.")
-                    
-            try:
-                conversation_history = self._converter.convert_to_google_content(conversation_history)
-            except Exception as e:
-                self.logger.info(f"conversion_history was already in Google format ({e}).")
-                pass
+        # 3. Convert the final (potentially truncated) history back to Google's format
+        final_contents_for_api = self._converter.convert_to_google_content(multipart_history)
 
         config = self._converter.convert_request_params_to_google_config(params)
         tool_config = None
@@ -224,50 +215,85 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
             )
         
         if structured_model:
-            config.response_mime_type = "application/json"
-            config.response_schema = structured_model.model_json_schema()
+            config["response_mime_type"] = "application/json"
+            config["response_schema"] = types.Schema(
+                type=types.Type.OBJECT,
+                properties={k: types.Schema(**v) for k, v in structured_model.model_json_schema()['properties'].items()},
+                required=structured_model.model_json_schema().get('required', [])
+            ) 
             tools = None  # In JSON mode, no other tools are used.
     
 
         return {
             "model": params.model,
-            "contents": conversation_history,
+            "contents": final_contents_for_api,
             "generation_config": config,
             "tools": tools,
             "tool_config": tool_config,
             "system_instruction": params.systemPrompt or self.instruction
         }
     
+    async def execute_simple_api_call(self, message_string, max_tokens=2_000) -> str:
+        model = self.default_request_params.model
+        payload = {
+            "model_name": model,
+            "contents": message_string,
+        }
+
+        api_response = self._execute_api_call(
+            payload=payload
+        )
+
+        response_string = api_response.text
+
+        return response_string
+
     async def _execute_api_call(
-            self,
-            payload: dict
-    ) -> genai.types.GenerateContentResponse:
-        """Executes the raw API call and handles usage tracking."""
+        self,
+        payload: dict
+    ) -> types.GenerateContentResponse:
+        """
+        Executes the API call, choosing the correct model instantiation
+        pattern for either Vertex AI or the standard Gemini API.
+        """
+        model_name = payload["model"]
+        contents = payload["contents"]
+
+        if hasattr(payload, "generation_config"):
+            generation_config = payload["generation_config"]
+            generation_config.tools = payload["tools"]
+            generation_config.tool_config = payload["tool_config"]
+            generation_config.system_instruction = payload["system_instruction"]
+        else:
+            generation_config = {}
 
         try:
-            model_instance = self._google_client
-            if payload.get("model"):
-                model_instance = genai.GenerativeModel(payload["model"])  # Create a model instance with the specific model for this call
 
-            api_response = await model_instance.generate_content_async(**payload)
+            # The rest of the execution is the same for both paths
+            api_response = self.client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=generation_config,
+                
+            )
 
             if hasattr(api_response, "usage_metadata") and api_response.usage_metadata:
                 turn_usage = TurnUsage.from_google(
-                    api_response.usage_metadata,
-                    payload["model"],
+                    usage=api_response.usage_metadata,
+                    model=model_name,
                 )
                 self._finalize_turn_usage(turn_usage=turn_usage)
             
             return api_response
 
-        except errors.GoogleAPICallError as e:
+        except errors.APIError as e:
             self.logger.error(f"Google API Error: {e}")
             raise ProviderKeyError(f"Google API Error: {e.message}", str(e)) from e
 
         except Exception as e:
             self.logger.error(f"Error during Google generate_content call: {e}")
             raise e
-
+        
     def _process_response(
             self, 
             candidate: types.Candidate,
@@ -280,11 +306,21 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         text_blocks = [block for block in assistant_message_content_parts if isinstance(block, TextContent)]
         tool_requests = [block for block in assistant_message_content_parts if isinstance(block, CallToolRequestParams)]
 
-        if candidate.finish_reason == "TOOL_USE" and tool_requests:  # Determine next action
+        # This is problematic. I found that the Google Gemini API provides:
+        #         api_response.candidates[0].finish_reason = FinishReason.STOP
+        # even when function calls are present.
+        # 
+        # if candidate.finish_reason == "TOOL_USE" and tool_requests:  # Determine next action
+        #     return self.ACTIONS.CONTINUE_WITH_TOOLS, tool_requests, raw_assistant_message
+
+        if tool_requests:
             return self.ACTIONS.CONTINUE_WITH_TOOLS, tool_requests, raw_assistant_message
         
-        else: 
-            return self.ACTIONS.STOP, text_blocks, raw_assistant_message
+        if candidate.finish_reason.lower() != "stop":
+            self.logger.warning(f"Stopping Gemini iteration even though finish_reason == {candidate.finish_reason.lower()} because no tool calls are present.")
+            
+
+        return self.ACTIONS.STOP, text_blocks, raw_assistant_message
 
     async def _execute_tool_calls(
             self,
@@ -326,7 +362,6 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         """Applies a prompt, handling history and generating a response if the last message is from the user."""
 
         self._reset_turn_tool_calls()
-
         params = self.get_request_params(request_params)
 
         # 1. Prepare messages for the current turn
@@ -343,12 +378,10 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         final_content, new_history_messages = await self._completion_orchestrator(
             messages_for_turn=messages_for_turn,
             params=params,
-            # Pass the raw multipart messages for truncation logic
-            multipart_messages=self.history.get(...)
         )
 
         # 3. Update history with the generated messages (is_prompt=False)
-        new_multipart_messages = self._converter._converter_convert_from_google_content_list(new_history_messages)
+        new_multipart_messages = self._converter.convert_from_google_content_list(new_history_messages)
         self.history.extend(new_multipart_messages, is_prompt=False)
 
         self._log_chat_finished(model=params.model)
@@ -368,12 +401,12 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         params = self.get_request_params(request_params)
         self.history.extend(multipart_messages, is_prompt=False)
 
-        messages_for_turn = self._converter.convert_to_google_content(
+        initial_google_messages = self._converter.convert_to_google_content(
             self.history.get(include_completion_history=params.use_history)
         )
 
         final_content, new_history_messages = await self._completion_orchestrator(
-            messages_for_turn=messages_for_turn,
+            messages_for_turn=initial_google_messages,
             params=params,
             structured_model=model,
         )
@@ -383,8 +416,8 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
 
         assistant_msg = Prompt.assistant(*final_content)
 
-        # Parse and validate the response
-        if final_content and isinstance(final_content[0], TextContent):
+        
+        if final_content and isinstance(final_content[0], TextContent):  # Parse and validate the response
             text_response = final_content[0].text
             try:
                 json_data = json.loads(text_response)

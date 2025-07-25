@@ -1,21 +1,37 @@
 """
 Context truncation manager for LLM conversations.
 """
-# region Imports -- Internal Imports
-from typing import Any, List, Optional
+# region Imports -- External Imports
+import json
+from typing import List, Optional
 
 import tiktoken
 
-# endregion
-# region Imports -- External Imports
+## Types
+from mcp.types import (
+    TextContent,
+)
+
+## Context
 from mcp_agent.context_dependent import ContextDependent
+
+## Core
 from mcp_agent.core.agent_types import ContextTruncationMode
+
+# endregion
+# region Imports -- Internal Imports
+## LLM
+from mcp_agent.llm.augmented_llm import AugmentedLLM
+
+## Logging
 from mcp_agent.logging.logger import get_logger
+
+## MCP
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 
 # endregion
 
-
+logger = get_logger(__name__)
 
 class ContextTruncation(ContextDependent):
     """
@@ -26,89 +42,97 @@ class ContextTruncation(ContextDependent):
     formats. Provider-specific formats should be converted somewhere else!
     """
 
-    def __init__(self, summarizer_llm: Optional[Any] = None):
-        """
-        Initializes the truncator.
-        Args:
-            summarizer_llm: An LLM client instance (like your Gemini class)
-                            that has a `generate_text(prompt: str) -> str` method.
-                            This is only required if you use the SUMMARIZE mode.
-        """
-        self.logger = get_logger(__name__)
-        self._summarization_llm = summarizer_llm
-        self.logger.info("Initialized ContextTruncation")
-
-    def truncate_if_required(
-        self,
+    @classmethod
+    async def truncate_if_required(
+        cls,
         messages: List[PromptMessageMultipart],
         truncation_mode: Optional[ContextTruncationMode],
         limit: Optional[int],
         model_name: str,
-        system_prompt: Optional[str] = None,
+        system_prompt: str,
+        provider: AugmentedLLM,
     ) -> List[PromptMessageMultipart]:
         """
         Checks if truncation is needed and applies the specified strategy.
         This is a synchronous wrapper for easier integration.
         """
+
+        logger.warning(f"""
+truncate_if_required()
+                            
+messages: {messages}
+truncation_mode: {str(truncation_mode)}
+limit: {str(limit)}
+model_name: {model_name}
+system_prompt: {system_prompt}
+
+""")
+        
+
+        logger.warning(f"""
+
+limit: {str(limit)}
+
+""")
+
+        estimated_tokens = cls._estimate_tokens(
+            messages=messages, 
+            model=model_name,
+        )
+        logger.warning(f"[006] estimated_tokens: {estimated_tokens}")
+
+
+        ############# NO NEED TO TRUNCATE IF LIMIT NOT CROSSED ##############
+        if estimated_tokens <= limit:
+            return messages
+
+        ############## RETURN EARLY IF NO TRUNCATION OR NO LIMIT ###############
         if not truncation_mode or truncation_mode == ContextTruncationMode.NONE or not limit:
             return messages
-
-        if not self._needs_truncation(messages, limit, model_name, system_prompt):
+        
+        elif not cls._needs_truncation(messages, limit, model_name):
             return messages
 
+        ########## IF ARGUMENTS VALID: ACT UPON TRUNCATION MODE ##########
         if truncation_mode == ContextTruncationMode.SUMMARIZE:
-            if not self._summarization_llm:
-                raise ValueError("Summarizer LLM instance is required for SUMMARIZE mode.")
-            return self._summarize_and_truncate(messages, limit, model_name, system_prompt)
+            return await cls._summarize_and_truncate(messages, limit, model_name, provider=provider)
         
         elif truncation_mode == ContextTruncationMode.REMOVE:
-            return self._truncate(messages, limit, model_name, system_prompt)
+            logger.warning("[004]")
+            return cls._truncate(messages, limit, model_name)
         
+        ######## RETURN TRUNCATED MESSAGES ############
         return messages
 
-    def _summarize_and_truncate(
-        self, messages: List[PromptMessageMultipart], max_tokens: int, model: str, system_prompt: str | None = None
+    @classmethod
+    async def _summarize_and_truncate(
+        cls, messages: List[PromptMessageMultipart], max_tokens: int, model: str, provider: AugmentedLLM
     ) -> List[PromptMessageMultipart]:
         """(Private) Truncates history by summarizing older messages."""
-        self.logger.info(f"Context has exceeded {max_tokens} tokens. Applying summarization.")
+        logger.info(f"Context has exceeded {max_tokens} tokens. Applying summarization.")
 
-        system_messages = [m for m in messages if m.role == "system"]
         conversation_messages = [m for m in messages if m.role != "system"]
 
-        # Fallback to simple truncation if conversation is too short
-        if len(conversation_messages) <= 2:
-            return self._truncate(messages, max_tokens, model, system_prompt)
-        
-        # Keep the last 2 messages, summarize the rest
-        split_index = len(conversation_messages) - 2
-        messages_to_summarize = conversation_messages[:split_index]
-        messages_to_keep = conversation_messages[split_index:]
+        summary_string = await cls._summarize_messages(
+            messages_to_summarize=conversation_messages,
+            provider=provider
+        )
 
-        summary_text = self._summarize_messages(messages_to_summarize)
-        
-        summary_injection = [
-            PromptMessageMultipart(
-                role="user",
-                content=[{"type": "text", "text": f"Here is a summary of our conversation so far: {summary_text}"}]
-            ),
-            PromptMessageMultipart(
-                role="assistant",
-                content=[{"type": "text", "text": "Thanks, I am caught up. Let's continue."}]
-            )
-        ]
+        summary = PromptMessageMultipart(
+            role="user",
+            content=[TextContent(type="text", text=summary_string)],
+        )
 
-        new_messages = system_messages + summary_injection + messages_to_keep
-        
-        # Final check, if still too long, truncate further
-        if self._needs_truncation(new_messages, max_tokens, model, system_prompt):
-             self.logger.warning("Context still too long after summarization. Applying simple truncation.")
-             return self._truncate(new_messages, max_tokens, model, system_prompt)
+        return [summary]
 
-        return new_messages
-
-    def _summarize_messages(self, messages_to_summarize: List[PromptMessageMultipart]) -> str:
+    @classmethod
+    async def _summarize_messages(
+        cls, 
+        messages_to_summarize: List[PromptMessageMultipart],
+        provider: AugmentedLLM,
+    ) -> str:
         """Uses the provided LLM to summarize a list of messages."""
-        self.logger.info("Summarizing older messages...")
+        logger.info("Summarizing older messages...")
         
         # Format the conversation history into a single string for the prompt
         conversation_text = "\n".join(
@@ -117,63 +141,150 @@ class ContextTruncation(ContextDependent):
         
         prompt = (
             "You are a conversation summarizer. Your task is to create a concise summary "
-            "of the following dialogue. The summary should be neutral, retain key information, "
-            "and be no more than five sentences long.\n\n"
+            "of the following agentic workflow. "
+            "Keep in mind that it should help the agent "
+            "to get back to work where it left off -- meaning that "
+            "you can roughly outline the steps that were taken already, "
+            "things that worked, things that did not work, and tasks that "
+            "were already completed.  "
+            "The conversation may contain tool call results. \n\n"
+            
             f"--- Conversation ---\n{conversation_text}\n\n--- Summary ---"
         )
 
-        # Call the summarizer LLM's text generation method
-        response = self._summarization_llm.generate_text(prompt)
-        return response.strip()
-
-    def get_summarization_llm(self, model: str):
-        """
-        Gets an LLM instance for summarization based on the provided model string.
-        """
-        from mcp_agent.llm.model_factory import create_llm
-        self.logger.info(f"Creating a summarization LLM using model: {model}")
-        
-        # ✅ Create a new LLM instance using the current model string
-        # Caching is removed to ensure the correct model is always used.
-        return create_llm(
-            model=model,
-            context=self.context,
-            name="summarizer",
+        # Call the provider's API call method. This helps to make the ContextTruncation class provider-agnostic.
+        summary_string = await provider.execute_simple_api_call(
+            message_string=prompt
         )
+        
+        return summary_string
 
+    @classmethod
     def _estimate_tokens(
-        self, messages: List[PromptMessageMultipart], model: str, system_prompt: str | None = None
+        cls, 
+        messages: List[PromptMessageMultipart], 
+        model: str, 
+        system_prompt: Optional[str] = None,
     ) -> int:
         """Estimate the number of tokens for a list of messages using tiktoken."""
         try:
             encoding = tiktoken.encoding_for_model(model)
         except KeyError:
-            self.logger.warning(f"Model {model} not found. Using cl100k_base tokenizer.")
+            logger.warning(f"Model {model} not found. Using cl100k_base tokenizer.")
             encoding = tiktoken.get_encoding("cl100k_base")
 
-        num_tokens = len(encoding.encode(system_prompt)) if system_prompt else 0
-        for message in messages:
-            # Assuming first_text() gets the main text content
-            num_tokens += len(encoding.encode(message.first_text()))
-        
-        num_tokens += len(messages) * 4 # Approximation for message overhead
-        return num_tokens
+        total_tokens = len(encoding.encode(system_prompt)) if system_prompt else 0
 
+        for message_index, message in enumerate(messages):
+            # Assuming first_text() gets the main text content
+
+            num_tokens_current_message = cls._estimate_tokens_from_message(message=message, encoding=encoding)
+            total_tokens += num_tokens_current_message
+            logger.info(f"[007] Message {message_index} with text {str(message)[:1000]} has {num_tokens_current_message} tokens.")
+
+        logger.info("[008] Adding an overhead of 4 tokens per message.")
+        total_tokens += len(messages) * 4 # Approximation for message overhead
+        return total_tokens
+
+    @classmethod
+    def _estimate_tokens_from_message(
+            cls,
+            message: PromptMessageMultipart,
+            encoding: tiktoken.Encoding
+    ) -> int:
+        """Estimates tokens for a single, potentially multi-paar message."""
+
+        tokens = 4  # Base overhead.
+
+        if not message.content:
+            return tokens
+        
+        for block in message.content:
+            block_type = getattr(block, 'type', '').lower()
+
+            if block_type == "text":
+                text = getattr(block, 'text', '')
+                if text:
+                    tokens += len(encoding.encode(text))
+
+            elif block_type == "tool_use":
+                tool_name = getattr(block, 'name', '')
+                tool_args = getattr(block, 'input', {})
+                tool_id = getattr(block, 'id', '')
+
+                if tool_name:
+                    tokens += len(encoding.encode(tool_name))
+                if tool_args:
+                    args_json = json.dumps(tool_args)
+                    tokens += len(encoding.encode(args_json))
+                if tool_id:
+                    tokens += len(encoding.encode(tool_id))
+                
+                tokens += 10  # Add overhead for tool use structure
+
+        
+            elif block_type == "tool_result":
+                # Count tool result ID
+                tool_use_id = getattr(block, 'tool_use_id', '')
+                if tool_use_id:
+                    tokens += len(encoding.encode(tool_use_id))
+                
+                # Count tool result content
+                tool_content = getattr(block, 'content', [])
+                if isinstance(tool_content, str):
+                    tokens += len(encoding.encode(tool_content))
+                elif isinstance(tool_content, list):
+                    for nested_block in tool_content:
+                        nested_type = getattr(nested_block, 'type', '').lower()
+                        if nested_type == "text":
+                            nested_text = getattr(nested_block, 'text', '')
+                            if nested_text:
+                                tokens += len(encoding.encode(nested_text))
+                        # Add more nested block types as needed
+                
+                # Add overhead for tool result structure
+                tokens += 10
+                
+            elif block_type == "image":
+                # Images have a fixed token cost in most models
+                tokens += 85  # Anthropic's typical image token cost
+                
+            elif block_type == "resource":
+                # Estimate tokens for embedded resources
+                resource = getattr(block, 'resource', None)
+                if resource:
+                    # Count resource text content
+                    resource_text = getattr(resource, 'text', '')
+                    if resource_text:
+                        tokens += len(encoding.encode(resource_text))
+                    else:
+                        # For binary resources, add a fixed cost
+                        tokens += 20
+            
+            else:
+                # Unknown block type - add minimal overhead
+                logger.warning(f"Unknown block type in token estimation: {block_type}")
+                tokens += 5
+        
+        return tokens
+
+    @classmethod
     def _needs_truncation(
-        self, messages: List[PromptMessageMultipart], max_tokens: int, model: str, system_prompt: str | None = None
+        cls, messages: List[PromptMessageMultipart], max_tokens: int, model: str, system_prompt: str | None = None
     ) -> bool:
         """Check if the context needs to be truncated."""
         if not max_tokens:
             return False
-        current_tokens = self._estimate_tokens(messages, model, system_prompt)
+        current_tokens = cls._estimate_tokens(messages, model, system_prompt)
         return current_tokens > max_tokens
 
+    @classmethod
     def _truncate(
-        self, messages: List[PromptMessageMultipart], max_tokens: int, model: str, system_prompt: str | None = None
+        cls, messages: List[PromptMessageMultipart], max_tokens: int, model: str, system_prompt: str | None = None
     ) -> List[PromptMessageMultipart]:
         """(Private) Truncates history by removing the oldest messages."""
-        initial_tokens = self._estimate_tokens(messages, model, system_prompt)
-        self.logger.warning(
+        initial_tokens = cls._estimate_tokens(messages, model, system_prompt)
+        logger.warning(
             f"Context ({initial_tokens} tokens) has exceeded the limit of {max_tokens} tokens. "
             "Applying simple truncation (remove)."
         )
@@ -181,18 +292,19 @@ class ContextTruncation(ContextDependent):
         truncated_messages = list(messages)
         
         # Loop until the token count is within the limit
-        while len(truncated_messages) > 1 and self._needs_truncation(
-            truncated_messages, max_tokens, model, system_prompt
+        while len(truncated_messages) >= 1 and cls._needs_truncation(
+            messages=truncated_messages, max_tokens=max_tokens, model=model, system_prompt=system_prompt
         ):
+            
             # Find the first non-system message to remove
             for i, msg in enumerate(truncated_messages):
                 if msg.role != "system":
                     truncated_messages.pop(i)
                     break 
-            else: # No non-system messages left to remove
+            else:  # No non-system messages left to remove
                 break 
         
-        final_tokens = self._estimate_tokens(truncated_messages, model, system_prompt)
-        self.logger.info(f"Simple truncation complete. New token count: {final_tokens}")
+        final_tokens = cls._estimate_tokens(truncated_messages, model, system_prompt)
+        logger.info(f"Simple truncation complete. New token count: {final_tokens}")
 
         return truncated_messages

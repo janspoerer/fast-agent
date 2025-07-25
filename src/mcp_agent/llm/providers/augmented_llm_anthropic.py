@@ -1,4 +1,5 @@
 # region External Imports
+import asyncio
 import json
 from typing import (
     TYPE_CHECKING,
@@ -87,6 +88,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         AugmentedLLM.PARAM_MAX_ITERATIONS,
         AugmentedLLM.PARAM_PARALLEL_TOOL_CALLS,
         AugmentedLLM.PARAM_TEMPLATE_VARS,
+        AugmentedLLM.PARAM_CONTEXT_TRUNCATION_MODE,
+        AugmentedLLM.PARAM_CONTEXT_TRUNCATION_LENGTH_LIMIT,
+        AugmentedLLM.PARAM_REQUEST_DELAY_SECONDS,
     }
 
     def __init__(self, *args, **kwargs) -> None:
@@ -99,7 +103,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
         self.client = self._initialize_client()  # Initialize the client once and reuse it
         self.converter = AnthropicConverter()
-        self.truncation_manager = ContextTruncation(self.context)
 
     def _initialize_client(self) -> AsyncAnthropic:
         """Initializes and returns the Anthropic API client."""
@@ -114,7 +117,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 "Invalid Anthropic API key",
                 "The configured Anthropic API key was rejected.\nPlease check that your API key is valid and not expired.",
             ) from e
-
 
     def _initialize_default_params(self, kwargs: dict) -> RequestParams:
         """Initialize Anthropic-specific default parameters"""
@@ -332,6 +334,19 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         # Use the base class method to merge remaining sampling parameters
         return self.prepare_provider_arguments(base_args, params, self.ANTHROPIC_EXCLUDE_FIELDS)
 
+    async def execute_simple_api_call(self, message_string, max_tokens=2_000) -> str:
+        model = self.default_request_params.model
+        arguments = {
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": message_string}],
+            "model": model,
+        }
+
+        response = await self._execute_streaming_call(arguments=arguments, model=model)
+        response_string = response.content[0].text
+
+        return response_string
+        
     async def _execute_streaming_call(self, arguments: dict, model: str) -> Message:
         """Executes the API call, processes the stream for real-time feedback, and returns the final message."""
         estimated_tokens = 0
@@ -357,7 +372,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 content=[TextBlock(type="text", text=f"Error during generation: {e}")],
                 stop_reason="end_turn", usage=Usage(input_tokens=0, output_tokens=0)
             )
-        
+           
     async def _process_response_actions(
         self, response: Message, messages: List[MessageParam], available_tools: List[ToolParam], params: RequestParams, structured_model: Optional[Type[ModelT]]
     ) -> Tuple[str, List[ContentBlock], Optional[MessageParam]]:
@@ -457,7 +472,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         Process a query using an LLM and available tools.
         """
         params = self.get_request_params(request_params)
-        model = params.model
 
         # 1. Prepare initial messages and tools
         messages: List[MessageParam] = self.history.get(include_completion_history=params.use_history)
@@ -470,40 +484,43 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         all_content_responses: List[ContentBlock] = []
 
         for i in range(params.max_iterations):
-            self._log_chat_progress(self.chat_turn(), model=model)
+            self._log_chat_progress(self.chat_turn(), model=params.model)
 
-            if hasattr(params, "context_truncation_or_summarization_mode") and params.context_truncation_or_summarization_mode:
-                # 1. Convert from Anthropic's format to your internal MCP format
-                multipart_messages = self.converter.convert_from_anthropic_list(messages)
+            if hasattr(params, "context_truncation_mode") and params.context_truncation_mode:
+                # 1. Convert from Anthropic's format to your internal MCP format                
+                multipart_messages = self.converter.convert_from_anthropic_list_to_multipart(messages)
 
-                if hasattr(params, params.context_truncation_or_summarization_limit) and params.context_truncation_or_summarization_limit:
-                    token_limit_for_truncation = params.context_truncation_or_summarization_limit
+                if hasattr(params, "context_truncation_length_limit") and params.context_truncation_length_limit:
+                    token_limit_for_truncation = params.context_truncation_length_limit
                 else:
                     token_limit_for_truncation = params.maxTokens
 
                 # 2. Call the truncation manager to truncate the history if needed
-                truncated_multipart = await self.truncation_manager.summarize_or_truncate_if_required(
+                truncated_multipart: List[PromptMessageMultipart] = await ContextTruncation().truncate_if_required(
                     messages=multipart_messages,
-                    context_truncation_or_summarization_mode=params.context_truncation_or_summarization_mode,
+                    truncation_mode=params.context_truncation_mode,
                     limit=token_limit_for_truncation,
-                    model=params.model,
+                    model_name=params.model,
                     system_prompt=system_prompt,
+                    provider=self,
                 )
 
                 # 3. If truncation occurred, convert back and update the messages list
-                if len(truncated_multipart) < len(multipart_messages):
-                    self.logger.info(
-                        f"History truncated from {len(multipart_messages)} to {len(truncated_multipart)} messages."
-                    )
-                    messages = self.converter.convert_to_anthropic_list(truncated_multipart)
-            
+                old_token_length = ContextTruncation()._estimate_tokens(messages=multipart_messages, model=params.model, system_prompt="")
+                new_token_length = ContextTruncation()._estimate_tokens(messages=truncated_multipart, model=params.model, system_prompt="")
 
-            # 2. Apply Caching
+                if new_token_length < old_token_length:
+                    self.logger.info(
+                        f"History truncated from {old_token_length} to {new_token_length} tokens."
+                    )
+                    messages = self.converter.convert_from_multipart_to_anthropic_list(truncated_multipart)
+            
+            # 4. Apply Caching
             final_system_prompt = self._apply_system_cache(system_prompt=system_prompt, cache_mode=cache_mode)
             conversation_cache_count = await self._apply_conversation_cache(messages=messages, cache_mode=cache_mode)
             self._check_cache_limit(conversation_cache_count=conversation_cache_count, system_prompt=final_system_prompt, cache_mode=cache_mode)
 
-            # 3. Build Payload and Execute API Call
+            # 5. Build Payload and Execute API Call
             arguments = self._prepare_request_payload(
                 messages=messages,
                 params=params,
@@ -511,10 +528,16 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 system_prompt=final_system_prompt,
                 structured_model=structured_model,
             )
-            self.logger.debug(f"Prepared arguments for Anthropic API: {str(arguments)[:1500]}")
+
+            self.logger.debug(f"Prepared arguments for Anthropic API: {str(arguments)[:50]}")
+            self.logger.debug(f"params: {params}")
+
+            if params.request_delay_seconds > 0.0:
+                self.logger.info(f"Sleeping for {self.PARAM_REQUEST_DELAY_SECONDS} seconds.")
+                asyncio.sleep(self.PARAM_REQUEST_DELAY_SECONDS)
             response = await self._execute_streaming_call(
                 arguments=arguments,
-                model=model,
+                model=params.model,
             )
             assistant_message = self.convert_message_to_message_param(response)
             messages.append(assistant_message)
@@ -523,7 +546,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             if hasattr(response, "usage") and response.usage:
                 turn_usage = TurnUsage.from_anthropic(
                     usage=response.usage,
-                    model=model
+                    model=params.model
                 )
                 self._finalize_turn_usage(turn_usage=turn_usage)
 
@@ -553,7 +576,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             prompt_len = len(self.history.get(include_completion_history=False))
             self.history.set(messages[prompt_len:])
 
-        self._log_chat_finished(model=model)
+        self._log_chat_finished(model=params.model)
         return all_content_responses
 
     async def generate_messages(
@@ -678,7 +701,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             "details": token_str.strip(),
         }
         self.logger.info("Streaming progress", data=data)
-
 
     def _show_usage(self, raw_usage: Usage, turn_usage: TurnUsage) -> None:
         # Print raw usage for debugging

@@ -104,9 +104,17 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
     PARAM_USE_HISTORY = "use_history"
     PARAM_MAX_ITERATIONS = "max_iterations"
     PARAM_TEMPLATE_VARS = "template_vars"
+    PARAM_CONTEXT_TRUNCATION_MODE = "context_truncation_mode"
+    PARAM_CONTEXT_TRUNCATION_LENGTH_LIMIT = "context_truncation_length_limit"
+    PARAM_REQUEST_DELAY_SECONDS = "request_delay_seconds"
 
     # Base set of fields that should always be excluded
-    BASE_EXCLUDE_FIELDS = {PARAM_METADATA}
+    BASE_EXCLUDE_FIELDS = {
+        PARAM_METADATA,
+        PARAM_CONTEXT_TRUNCATION_MODE,
+        PARAM_CONTEXT_TRUNCATION_LENGTH_LIMIT,
+        PARAM_REQUEST_DELAY_SECONDS,
+    }
 
     class _Actions:
         STOP = "Stop"  # Making the actions available like so: self.ACTIONS.STOP
@@ -205,6 +213,9 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
             parallel_tool_calls=True,
             max_iterations=20,
             use_history=True,
+            context_truncation_mode=None,
+            context_truncation_length_limit=None,
+            request_delay_seconds=0.0,
         )
 
     async def generate(

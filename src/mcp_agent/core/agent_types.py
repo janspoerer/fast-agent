@@ -45,8 +45,8 @@ class AgentConfig:
     model: str | None = None
     use_history: bool = True
     
-    context_truncation_or_summarization_mode: Optional[ContextTruncationMode] = None
-    context_truncation_or_summarization_length_limit: Optional[int] = None
+    context_truncation_mode: Optional[ContextTruncationMode] = None
+    context_truncation_length_limit: Optional[int] = None
     
     default_request_params: RequestParams | None = None
     human_input: bool = False
