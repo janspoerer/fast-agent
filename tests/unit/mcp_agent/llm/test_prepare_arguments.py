@@ -1,4 +1,3 @@
-import pytest
 from typing import List
 
 from mcp_agent.core.request_params import RequestParams
