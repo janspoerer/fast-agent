@@ -102,7 +102,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         )
 
         self.client = self._initialize_client()  # Initialize the client once and reuse it
-        self.converter = AnthropicConverter()
 
     def _initialize_client(self) -> AsyncAnthropic:
         """Initializes and returns the Anthropic API client."""
@@ -471,24 +470,27 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         Orchestrates the process of sending a prompt to Anthropic and handling the response.
         Process a query using an LLM and available tools.
         """
+        # Initialization of History Incl. the New Message
         params = self.get_request_params(request_params)
-
-        # 1. Prepare initial messages and tools
         messages: List[MessageParam] = self.history.get(include_completion_history=params.use_history)
         messages.append(message_param)
+        all_content_responses: List[ContentBlock] = []
 
-        available_tools = await self._prepare_tools(structured_model)
+        # System Prompt
         system_prompt = self.instruction or params.systemPrompt
+
+        # Caching
         cache_mode = self._get_cache_mode()
         self.logger.debug(f"Anthropic cache_mode: {cache_mode}")
-        all_content_responses: List[ContentBlock] = []
+
+        available_tools = await self._prepare_tools(structured_model)
 
         for i in range(params.max_iterations):
             self._log_chat_progress(self.chat_turn(), model=params.model)
 
             if hasattr(params, "context_truncation_mode") and params.context_truncation_mode:
                 # 1. Convert from Anthropic's format to your internal MCP format                
-                multipart_messages = self.converter.convert_from_anthropic_list_to_multipart(messages)
+                multipart_messages = AnthropicConverter.convert_from_anthropic_list_to_multipart(messages)
 
                 if hasattr(params, "context_truncation_length_limit") and params.context_truncation_length_limit:
                     token_limit_for_truncation = params.context_truncation_length_limit
@@ -496,7 +498,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                     token_limit_for_truncation = params.maxTokens
 
                 # 2. Call the truncation manager to truncate the history if needed
-                truncated_multipart: List[PromptMessageMultipart] = await ContextTruncation().truncate_if_required(
+                truncated_multipart: List[PromptMessageMultipart] = await ContextTruncation.truncate_if_required(
                     messages=multipart_messages,
                     truncation_mode=params.context_truncation_mode,
                     limit=token_limit_for_truncation,
@@ -506,14 +508,14 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 )
 
                 # 3. If truncation occurred, convert back and update the messages list
-                old_token_length = ContextTruncation()._estimate_tokens(messages=multipart_messages, model=params.model, system_prompt="")
-                new_token_length = ContextTruncation()._estimate_tokens(messages=truncated_multipart, model=params.model, system_prompt="")
+                old_token_length = ContextTruncation._estimate_tokens(messages=multipart_messages, model=params.model, system_prompt="")
+                new_token_length = ContextTruncation._estimate_tokens(messages=truncated_multipart, model=params.model, system_prompt="")
 
                 if new_token_length < old_token_length:
                     self.logger.info(
                         f"History truncated from {old_token_length} to {new_token_length} tokens."
                     )
-                    messages = self.converter.convert_from_multipart_to_anthropic_list(truncated_multipart)
+                    messages = AnthropicConverter.convert_from_multipart_to_anthropic_list(truncated_multipart)
             
             # 4. Apply Caching
             final_system_prompt = self._apply_system_cache(system_prompt=system_prompt, cache_mode=cache_mode)
@@ -687,20 +689,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         """
         return super()._update_streaming_progress(text_chunk, model, estimated_tokens)
 
-    def _log_final_streaming_progress(
-            self,
-            actual_tokens: int,
-            model: str,
-    ) -> None:
-        token_str = str(actual_tokens).rjust(5)
-        data = {
-            "progress_action": ProgressAction.STREAMING,
-            "model": model,
-            "agent_name": self.name,
-            "chat_turn": self.chat_turn(),
-            "details": token_str.strip(),
-        }
-        self.logger.info("Streaming progress", data=data)
+
 
     def _show_usage(self, raw_usage: Usage, turn_usage: TurnUsage) -> None:
         # Print raw usage for debugging

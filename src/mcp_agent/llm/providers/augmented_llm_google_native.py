@@ -64,13 +64,9 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, provider=Provider.GOOGLE, **kwargs)
-        self.client = self._initialize_google_client()
-        self._converter = GoogleConverter()
-        self.truncation_manager = ContextTruncation(
+        self.client = self._initialize_client()
 
-        )
-
-    def _initialize_google_client(self) -> None:
+    def _initialize_client(self) -> None:
         """
         Returns a Google client.
         """
@@ -126,7 +122,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         all_content_responses: List[ContentBlock] = []
         turn_conversation_history = list(messages_for_turn)
         available_tools = await self.aggregator.list_tools()
-        google_tools = self._converter.convert_to_google_tools(available_tools.tools)
+        google_tools = GoogleConverter.convert_to_google_tools(available_tools.tools)
 
         for i in range(params.max_iterations):
             self._log_chat_progress(self.chat_turn(), model=params.model)
@@ -185,13 +181,13 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         """Assembles the final dictionary of arguments for the Gemini API call, applying truncation first."""
         
         # 1. Convert from Google's native format to Multipart format for processing
-        multipart_history: List[PromptMessageMultipart] = self._converter.convert_from_google_content_list(conversation_history)
+        multipart_history: List[PromptMessageMultipart] = GoogleConverter.convert_from_google_content_list(conversation_history)
         
         # 2. Apply truncation logic
         if hasattr(params, "context_truncation_mode") and params.context_truncation_mode:
             token_limit_for_truncation = params.context_truncation_length_limit or params.maxTokens
 
-            truncated_multipart = await self.truncation_manager.truncate_if_required(
+            truncated_multipart = await ContextTruncation.truncate_if_required(
                 messages=multipart_history,
                 truncation_mode=params.context_truncation_mode,
                 limit=token_limit_for_truncation,
@@ -204,9 +200,9 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
                 multipart_history = truncated_multipart
 
         # 3. Convert the final (potentially truncated) history back to Google's format
-        final_contents_for_api = self._converter.convert_to_google_content(multipart_history)
+        final_contents_for_api = GoogleConverter.convert_to_google_content(multipart_history)
 
-        config = self._converter.convert_request_params_to_google_config(params)
+        config = GoogleConverter.convert_request_params_to_google_config(params)
         tool_config = None
 
         if tools: 
@@ -300,7 +296,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
     ) -> Tuple[str, List[ContentBlock], types.Content]:
         """Parses a response candidate to extract content and determine the next action."""
 
-        assistant_message_content_parts = self._converter.convert_from_google_content(candidate.content)  # Convert the raw assistant message for internal use.
+        assistant_message_content_parts = GoogleConverter.convert_from_google_content(candidate.content)  # Convert the raw assistant message for internal use.
         raw_assistant_message = candidate.content  # Keep the raw assistant message to append to the turn's history.
 
         text_blocks = [block for block in assistant_message_content_parts if isinstance(block, TextContent)]
@@ -347,7 +343,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
 
             tool_results_for_next_turn.append((tool_call_params.name, result))
         
-        return self._converter.convert_function_results_to_google(tool_results_for_next_turn)
+        return GoogleConverter.convert_function_results_to_google(tool_results_for_next_turn)
 
     # --------------------------------------------------------------------------
     # Main Entry Points
@@ -366,7 +362,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
 
         # 1. Prepare messages for the current turn
         self.history.extend(multipart_messages, is_prompt=is_template)
-        messages_for_turn = self._converter.convert_to_google_content(
+        messages_for_turn = GoogleConverter.convert_to_google_content(
             self.history.get(include_completion_history=params.use_history)
         )
 
@@ -381,7 +377,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         )
 
         # 3. Update history with the generated messages (is_prompt=False)
-        new_multipart_messages = self._converter.convert_from_google_content_list(new_history_messages)
+        new_multipart_messages = GoogleConverter.convert_from_google_content_list(new_history_messages)
         self.history.extend(new_multipart_messages, is_prompt=False)
 
         self._log_chat_finished(model=params.model)
@@ -401,7 +397,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         params = self.get_request_params(request_params)
         self.history.extend(multipart_messages, is_prompt=False)
 
-        initial_google_messages = self._converter.convert_to_google_content(
+        initial_google_messages = GoogleConverter.convert_to_google_content(
             self.history.get(include_completion_history=params.use_history)
         )
 
@@ -411,7 +407,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
             structured_model=model,
         )
 
-        new_multipart_messages = self._converter.convert_from_google_content_list(new_history_messages)
+        new_multipart_messages = GoogleConverter.convert_from_google_content_list(new_history_messages)
         self.history.extend(new_multipart_messages, is_prompt=False)
 
         assistant_msg = Prompt.assistant(*final_content)

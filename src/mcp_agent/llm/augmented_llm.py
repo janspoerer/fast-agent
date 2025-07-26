@@ -625,6 +625,21 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
 
         return new_total
 
+    def _log_final_streaming_progress(
+            self,
+            actual_tokens: int,
+            model: str,
+    ) -> None:
+        token_str = str(actual_tokens).rjust(5)
+        data = {
+            "progress_action": ProgressAction.STREAMING,
+            "model": model,
+            "agent_name": self.name,
+            "chat_turn": self.chat_turn(),
+            "details": token_str.strip(),
+        }
+        self.logger.info("Streaming progress", data=data)
+
     def _log_chat_finished(self, model: Optional[str] = None) -> None:
         """Log a chat finished event"""
         data = {
