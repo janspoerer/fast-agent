@@ -60,11 +60,11 @@ class ContextTruncation(ContextDependent):
         logger.warning(f"""
 truncate_if_required()
                             
-messages: {messages}
-truncation_mode: {str(truncation_mode)}
+messages: {messages[:20]}
+truncation_mode: {str(truncation_mode)[:20]}
 limit: {str(limit)}
 model_name: {model_name}
-system_prompt: {system_prompt}
+system_prompt: {system_prompt[:20]}
 
 """)
         

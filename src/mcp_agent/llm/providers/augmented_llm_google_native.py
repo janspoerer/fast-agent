@@ -363,7 +363,8 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
         # 1. Prepare messages for the current turn
         self.history.extend(multipart_messages, is_prompt=is_template)
         messages_for_turn = GoogleConverter.convert_to_google_content(
-            self.history.get(include_completion_history=params.use_history)
+            messages=self.history.get(include_completion_history=params.use_history),
+            
         )
 
         last_message_role = multipart_messages[-1].role if multipart_messages else None

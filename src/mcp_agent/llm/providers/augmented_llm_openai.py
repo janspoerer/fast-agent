@@ -17,6 +17,7 @@ from openai.types.chat import (
     ChatCompletionMessageToolCall,
     ChatCompletionSystemMessageParam,
     ChatCompletionToolParam,
+    ChatCompletionUserMessageParam,
 )
 from openai.types.responses import (
     ResponseFunctionToolCall
@@ -43,7 +44,6 @@ from mcp_agent.logging.logger import get_logger
 from mcp_agent.llm.provider_types import Provider
 from mcp_agent.llm.providers.multipart_converter_openai import (
     OpenAIConverter, 
-    OpenAIMessage,
 )
 from mcp_agent.llm.context_truncation_and_summarization import (
     ContextTruncation
@@ -192,6 +192,28 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
         return self.prepare_provider_arguments(
             base_args, params, self.OPENAI_EXCLUDE_FIELDS.union(self.BASE_EXCLUDE_FIELDS)
         )
+    
+    async def execute_simple_api_call(self, message_string: str, max_tokens=2_000) -> str:
+        """
+        Executes a basic ChatCompletion request with a single user message.
+        
+        Args:
+            message_string (str): The user's message.
+            max_tokens (int): The maximum number of tokens to generate.
+
+        Returns:
+            str: The content of the model's reply.
+        """
+
+        model = self.default_request_params.model
+        
+        response = await self.client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": message_string}],
+            max_tokens=max_tokens
+        )
+
+        return response.choices[0].message.content
 
     async def _execute_streaming_call(
         self, arguments: dict, model: str
@@ -294,6 +316,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
 
             tool_calls: List[ResponseFunctionToolCall] = message.tool_calls
 
+            # Message role must be "user"
             tool_content, tool_results_message = await self._process_tool_calls(
                 tool_calls, available_tools
             )
@@ -323,7 +346,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
 
     async def _openai_completion(
         self,
-        message: OpenAIMessage,
+        new_message: ChatCompletionMessageParam,
         request_params: Optional[RequestParams] = None,
         structured_model: Optional[Type[ModelT]] = None,
 
@@ -334,13 +357,10 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
         """
         request_params = self.get_request_params(request_params)
         messages: List[ChatCompletionMessageParam] = self.history.get(include_completion_history=request_params.use_history)
-        messages.append(message)
+        messages.append(new_message)
         all_content_responses: List[ContentBlock] = []
 
         system_prompt = self.instruction or request_params.systemPrompt
-
-        messages.extend(self.history.get(include_completion_history=request_params.use_history))
-        messages.append(message)  # New message
 
         available_tools = await self._prepare_tools(structured_model)
         
@@ -355,11 +375,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
             self._log_chat_progress(self.chat_turn(), model=request_params.model)
 
             if hasattr(request_params, "context_truncation_mode") and request_params.context_truncation_mode:
-                # 1. Convert from Anthropic's format to your internal MCP format                
-                
-                for message in messages:
-                    message["role"]
-                
+                # 1. Convert from Anthropic's format to MCP format                                
                 multipart_messages = OpenAIConverter.convert_from_openai_list_to_multipart(messages)
 
                 if hasattr(request_params, "context_truncation_length_limit") and request_params.context_truncation_length_limit:
@@ -385,7 +401,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
                     self.logger.info(
                         f"History truncated from {old_token_length} to {new_token_length} tokens."
                     )
-                    messages = OpenAIConverter.convert_from_openai_list_to_multipart(truncated_multipart)
+                    # messages = OpenAIConverter.convert_from_openai_list_to_multipart(truncated_multipart)
 
             arguments = self._prepare_api_request(
                 messages=messages, 
@@ -406,12 +422,6 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
             if response_message.tool_calls:
                 finish_reason = "tool_calls"
 
-
-            #
-            #
-            #          -.-
-            #  
-            #
             action, new_content, messages_to_append = await self._process_response_actions(
                 message=response_message, finish_reason=finish_reason, available_tools=available_tools, params=request_params
             )
@@ -494,9 +504,11 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
         #######################################
         #### Call OpenAI API ##################
         #######################################
-        message_param: OpenAIMessage = OpenAIConverter.convert_to_openai(last_message)
+
+        # ChatCompletionMessageParam is simply a dict at runtime.
+        message_param: ChatCompletionMessageParam = OpenAIConverter.convert_to_openai(last_message)
         responses: List[ContentBlock] = await self._openai_completion(
-            message=message_param,           ##
+            new_message=message_param,           ##
             request_params=request_params,   ##
         )                                    ##
         return Prompt.assistant(*responses)  ##
