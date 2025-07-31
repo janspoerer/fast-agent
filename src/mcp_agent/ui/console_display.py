@@ -7,6 +7,11 @@ from rich.panel import Panel
 from rich.text import Text
 
 from mcp_agent import console
+from mcp_agent.core.mermaid_utils import (
+    create_mermaid_live_link,
+    detect_diagram_type,
+    extract_mermaid_diagrams,
+)
 from mcp_agent.mcp.common import SEP
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator
 
@@ -158,29 +163,29 @@ class ConsoleDisplay:
                 content = content[:360] + "..."
             console.console.print(content, style="dim", markup=self._markup)
 
-        # Bottom separator with tool list: ─ [tool1] [tool2] ────────
+        # Bottom separator with tool list using pipe separators (matching server style)
         console.console.print()
+
+        # Use existing tool list formatting with pipe separators
         if display_tool_list and len(display_tool_list) > 0:
-            # Truncate tool list if needed (leave space for "─ " prefix and some separator)
+            # Truncate tool list if needed (leave space for "─| " prefix and " |" suffix)
             max_tool_width = console.console.size.width - 10  # Reserve space for separators
             truncated_tool_list = self._truncate_list_if_needed(display_tool_list, max_tool_width)
-            tool_width = truncated_tool_list.cell_len
 
-            # Calculate how much space is left for separator line on the right
-            total_width = console.console.size.width
-            remaining_width = max(0, total_width - tool_width - 2)  # -2 for "─ " prefix
-            right_sep = "─" * remaining_width if remaining_width > 0 else ""
-
-            # Create the separator line: ─ [tools] ────────
-            combined = Text()
-            combined.append("─ ", style="dim")
-            combined.append_text(truncated_tool_list)
-            combined.append(right_sep, style="dim")
-
-            console.console.print(combined, markup=self._markup)
+            # Create the separator line: ─| [tools] |──────
+            line1 = Text()
+            line1.append("─| ", style="dim")
+            line1.append_text(truncated_tool_list)
+            line1.append(" |", style="dim")
+            remaining = console.console.size.width - line1.cell_len
+            if remaining > 0:
+                line1.append("─" * remaining, style="dim")
         else:
-            # Full separator if no tools
-            console.console.print("─" * console.console.size.width, style="dim")
+            # No tools - continuous bar
+            line1 = Text()
+            line1.append("─" * console.console.size.width, style="dim")
+
+        console.console.print(line1, markup=self._markup)
         console.console.print()
 
     async def show_tool_update(self, aggregator: MCPAggregator | None, updated_server: str) -> None:
@@ -224,6 +229,8 @@ class ConsoleDisplay:
     def _format_tool_list(self, available_tools, selected_tool_name):
         """Format the list of available tools, highlighting the selected one."""
         display_tool_list = Text()
+        matching_tools = []
+
         for display_tool in available_tools:
             # Handle both OpenAI and Anthropic tool formats
             if isinstance(display_tool, dict):
@@ -248,9 +255,15 @@ class ConsoleDisplay:
             )
 
             if selected_tool_name.split(SEP)[0] == parts[0]:
-                style = "magenta" if tool_call_name == selected_tool_name else "dim white"
                 shortened_name = parts[1] if len(parts[1]) <= 12 else parts[1][:11] + "…"
-                display_tool_list.append(f"[{shortened_name}] ", style)
+                matching_tools.append((shortened_name, tool_call_name))
+
+        # Format with pipe separators instead of brackets
+        for i, (shortened_name, tool_call_name) in enumerate(matching_tools):
+            if i > 0:
+                display_tool_list.append(" | ", style="dim")
+            style = "magenta" if tool_call_name == selected_tool_name else "dim"
+            display_tool_list.append(shortened_name, style)
 
         return display_tool_list
 
@@ -379,31 +392,83 @@ class ConsoleDisplay:
             # Handle Rich Text objects directly
             console.console.print(message_text, markup=self._markup)
 
-        # Bottom separator with server list: ─ [server1] [server2] ────────
+        # Bottom separator with server list and diagrams
         console.console.print()
+
+        # Check for mermaid diagrams in the message content
+        diagrams = []
+        if isinstance(message_text, str):
+            diagrams = extract_mermaid_diagrams(message_text)
+
+        # Create server list with pipe separators (no "mcp:" prefix)
+        server_content = Text()
         if display_server_list and len(display_server_list) > 0:
-            # Truncate server list if needed (leave space for "─ " prefix and some separator)
-            max_server_width = console.console.size.width - 10  # Reserve space for separators
-            truncated_server_list = self._truncate_list_if_needed(
-                display_server_list, max_server_width
-            )
-            server_width = truncated_server_list.cell_len
+            # Convert the existing server list to pipe-separated format
+            servers = []
+            if aggregator:
+                for server_name in await aggregator.list_servers():
+                    servers.append(server_name)
 
-            # Calculate how much space is left for separator line on the right
-            total_width = console.console.size.width
-            remaining_width = max(0, total_width - server_width - 2)  # -2 for "─ " prefix
-            right_sep = "─" * remaining_width if remaining_width > 0 else ""
+            # Create pipe-separated server list
+            for i, server_name in enumerate(servers):
+                if i > 0:
+                    server_content.append(" | ", style="dim")
+                # Highlight active server, dim inactive ones
+                mcp_server_name = (
+                    highlight_namespaced_tool.split(SEP)[0]
+                    if SEP in highlight_namespaced_tool
+                    else highlight_namespaced_tool
+                )
+                style = "bright_green" if server_name == mcp_server_name else "dim"
+                server_content.append(server_name, style)
 
-            # Create the separator line: ─ [servers] ────────
-            combined = Text()
-            combined.append("─ ", style="dim")
-            combined.append_text(truncated_server_list)
-            combined.append(right_sep, style="dim")
-
-            console.console.print(combined, markup=self._markup)
+        # Create main separator line
+        line1 = Text()
+        if server_content.cell_len > 0:
+            line1.append("─| ", style="dim")
+            line1.append_text(server_content)
+            line1.append(" |", style="dim")
+            remaining = console.console.size.width - line1.cell_len
+            if remaining > 0:
+                line1.append("─" * remaining, style="dim")
         else:
-            # Full separator if no servers
-            console.console.print("─" * console.console.size.width, style="dim")
+            # No servers - continuous bar (no break)
+            line1.append("─" * console.console.size.width, style="dim")
+
+        console.console.print(line1, markup=self._markup)
+
+        # Add diagram links in panel if any diagrams found
+        if diagrams:
+            diagram_content = Text()
+            # Add bullet at the beginning
+            diagram_content.append("● ", style="dim")
+
+            for i, diagram in enumerate(diagrams, 1):
+                if i > 1:
+                    diagram_content.append(" • ", style="dim")
+
+                # Generate URL
+                url = create_mermaid_live_link(diagram.content)
+
+                # Format: "1 - Title" or "1 - Flowchart" or "Diagram 1"
+                if diagram.title:
+                    diagram_content.append(
+                        f"{i} - {diagram.title}", style=f"bright_blue link {url}"
+                    )
+                else:
+                    # Try to detect diagram type, fallback to "Diagram N"
+                    diagram_type = detect_diagram_type(diagram.content)
+                    if diagram_type != "Diagram":
+                        diagram_content.append(
+                            f"{i} - {diagram_type}", style=f"bright_blue link {url}"
+                        )
+                    else:
+                        diagram_content.append(f"Diagram {i}", style=f"bright_blue link {url}")
+
+            # Display diagrams on a simple new line (more space efficient)
+            console.console.print()
+            console.console.print(diagram_content, markup=self._markup)
+
         console.console.print()
 
     def show_user_message(

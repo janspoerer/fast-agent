@@ -19,6 +19,7 @@ from mcp_agent.llm.providers.augmented_llm_deepseek import DeepSeekAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_generic import GenericAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_google_native import GoogleNativeAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_google_oai import GoogleOaiAugmentedLLM
+from mcp_agent.llm.providers.augmented_llm_groq import GroqAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_openrouter import OpenRouterAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_tensorzero import TensorZeroAugmentedLLM
@@ -43,6 +44,7 @@ LLMClass = Union[
     Type[GenericAugmentedLLM],
     Type[AzureOpenAIAugmentedLLM],
     Type[BedrockAugmentedLLM],
+    Type[GroqAugmentedLLM],
 ]
 
 
@@ -126,7 +128,6 @@ class ModelFactory:
         "qwen-plus": Provider.ALIYUN,
         "qwen-max": Provider.ALIYUN,
         "qwen-long": Provider.ALIYUN,
-
     }
 
     MODEL_ALIASES = {
@@ -146,6 +147,7 @@ class ModelFactory:
         "gemini2": "gemini-2.0-flash",
         "gemini25": "gemini-2.5-flash-preview-05-20",
         "gemini25pro": "gemini-2.5-pro-preview-05-06",
+        "kimi": "groq.moonshotai/kimi-k2-instruct",
     }
 
     # Mapping of providers to their LLM classes
@@ -163,6 +165,7 @@ class ModelFactory:
         Provider.AZURE: AzureOpenAIAugmentedLLM,
         Provider.ALIYUN: AliyunAugmentedLLM,
         Provider.BEDROCK: BedrockAugmentedLLM,
+        Provider.GROQ: GroqAugmentedLLM,
     }
 
     # Mapping of special model names to their specific LLM classes
@@ -217,11 +220,11 @@ class ModelFactory:
         # If provider still None, try to get from DEFAULT_PROVIDERS using the model_name_str
         if provider is None:
             provider = cls.DEFAULT_PROVIDERS.get(model_name_str)
-            
+
             # If still None, try pattern matching for Bedrock models
             if provider is None and BedrockAugmentedLLM.matches_model_pattern(model_name_str):
                 provider = Provider.BEDROCK
-            
+
             if provider is None:
                 raise ModelConfigError(
                     f"Unknown model or provider for: {model_string}. Model name parsed as '{model_name_str}'"

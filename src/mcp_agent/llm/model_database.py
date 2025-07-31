@@ -129,16 +129,16 @@ class ModelDatabase:
         context_window=2097152, max_output_tokens=8192, tokenizes=GOOGLE_MULTIMODAL
     )
 
-    # FIXME: xAI has not documented the max output tokens for Grok 4. Using Grok 3 as a placeholder. Will need to update when available (if ever)
-    GROK_4 = ModelParameters(
-        context_window=256000, max_output_tokens=16385, tokenizes=XAI_VISION
+    KIMI_MOONSHOT = ModelParameters(
+        context_window=131072, max_output_tokens=16384, tokenizes=TEXT_ONLY
     )
+
+    # FIXME: xAI has not documented the max output tokens for Grok 4. Using Grok 3 as a placeholder. Will need to update when available (if ever)
+    GROK_4 = ModelParameters(context_window=256000, max_output_tokens=16385, tokenizes=XAI_VISION)
 
     # Source for Grok 3 max output: https://www.reddit.com/r/grok/comments/1j7209p/exploring_grok_3_beta_output_capacity_a_simple/
     # xAI does not document Grok 3 max output tokens, using the above source as a reference.
-    GROK_3 = ModelParameters(
-        context_window=131072, max_output_tokens=16385, tokenizes=TEXT_ONLY
-    )
+    GROK_3 = ModelParameters(context_window=131072, max_output_tokens=16385, tokenizes=TEXT_ONLY)
 
     # Model configuration database
     MODELS: Dict[str, ModelParameters] = {
@@ -193,7 +193,6 @@ class ModelDatabase:
         "claude-3-7-sonnet": ANTHROPIC_37_SERIES,
         "claude-3-7-sonnet-20250219": ANTHROPIC_37_SERIES,
         "claude-3-7-sonnet-latest": ANTHROPIC_37_SERIES,
-        "claude-sonnet-4": ANTHROPIC_SONNET_4_VERSIONED,
         "claude-sonnet-4-0": ANTHROPIC_SONNET_4_VERSIONED,
         "claude-sonnet-4-20250514": ANTHROPIC_SONNET_4_VERSIONED,
         "claude-opus-4": ANTHROPIC_OPUS_4_VERSIONED,
@@ -214,6 +213,7 @@ class ModelDatabase:
         "grok-3-mini": GROK_3,
         "grok-3-fast": GROK_3,
         "grok-3-mini-fast": GROK_3,
+        "moonshotai/kimi-k2-instruct": KIMI_MOONSHOT,
     }
 
     @classmethod

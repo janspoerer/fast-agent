@@ -28,10 +28,14 @@ class FormattedResponse(BaseModel):
         "haiku",
         "sonnet",
         "gpt-4.1",
+        "azure.gpt-4.1",
         "gpt-4.1-mini",
         "o3-mini.low",
         "openrouter.google/gemini-2.0-flash-001",
         "gemini25",
+        "groq.moonshotai/kimi-k2-instruct",
+        # "groq.deepseek-r1-distill-llama-70b",
+        # "groq.qwen/qwen3-32b",
     ],
 )
 async def test_structured_output_with_automatic_format_for_model(fast_agent, model_name):
@@ -166,6 +170,8 @@ async def test_structured_output_with_response_format_overriden(fast_agent, mode
         "haiku",
         "gemini2",
         "gemini25",
+        "groq.moonshotai/kimi-k2-instruct",
+        "groq.deepseek-r1-distill-llama-70b",
     ],
 )
 async def test_history_management_with_structured(fast_agent, model_name):
