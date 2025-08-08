@@ -25,6 +25,7 @@ from mcp.client.session import ElicitationFnT
 from pydantic import AnyUrl
 
 from mcp_agent.agents.agent import AgentConfig
+from mcp_agent.agents.workflow.iterative_planner import ITERATIVE_PLAN_SYSTEM_PROMPT_TEMPLATE
 from mcp_agent.agents.workflow.router_agent import (
     ROUTING_SYSTEM_INSTRUCTION,
 )
@@ -450,6 +451,59 @@ def orchestrator(
             human_input=human_input,
             child_agents=agents,
             plan_type=plan_type,
+            plan_iterations=plan_iterations,
+            default=default,
+            api_key=api_key,
+        ),
+    )
+
+
+def iterative_planner(
+    self,
+    name: str,
+    *,
+    agents: List[str],
+    instruction: str | Path | AnyUrl = ITERATIVE_PLAN_SYSTEM_PROMPT_TEMPLATE,
+    model: Optional[str] = None,
+    request_params: RequestParams | None = None,
+    plan_iterations: int = -1,
+    default: bool = False,
+    api_key: str | None = None,
+) -> Callable[[AgentCallable[P, R]], DecoratedOrchestratorProtocol[P, R]]:
+    """
+    Decorator to create and register an orchestrator agent with type-safe signature.
+
+    Args:
+        name: Name of the orchestrator
+        agents: List of agent names this orchestrator can use
+        instruction: Base instruction for the orchestrator
+        model: Model specification string
+        use_history: Whether to maintain conversation history
+        request_params: Additional request parameters for the LLM
+        human_input: Whether to enable human input capabilities
+        plan_type: Planning approach - "full" or "iterative"
+        plan_iterations: Maximum number of planning iterations (0 for unlimited)
+        default: Whether to mark this as the default agent
+
+    Returns:
+        A decorator that registers the orchestrator with proper type annotations
+    """
+
+    # Create final request params with plan_iterations
+    resolved_instruction = _resolve_instruction(instruction)
+
+    return cast(
+        "Callable[[AgentCallable[P, R]], DecoratedOrchestratorProtocol[P, R]]",
+        _decorator_impl(
+            self,
+            AgentType.ITERATIVE_PLANNER,
+            name=name,
+            instruction=resolved_instruction,
+            servers=[],  # Orchestrators don't connect to servers directly
+            model=model,
+            use_history=False,
+            request_params=request_params,
+            child_agents=agents,
             plan_iterations=plan_iterations,
             default=default,
             api_key=api_key,

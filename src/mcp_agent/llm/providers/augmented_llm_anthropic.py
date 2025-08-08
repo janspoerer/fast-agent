@@ -1,4 +1,3 @@
-# region External Imports
 import asyncio
 import json
 from typing import (
@@ -65,7 +64,12 @@ from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 # endregion
 
 
-DEFAULT_ANTHROPIC_MODEL = "claude-3-7-sonnet-latest"
+## Internal Imports -- MCP
+
+# endregion
+
+
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-0"
 
 
 class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
@@ -119,8 +123,12 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
     def _initialize_default_params(self, kwargs: dict) -> RequestParams:
         """Initialize Anthropic-specific default parameters"""
-        base_params = super()._initialize_default_params(kwargs)  # Get base defaults from parent (includes ModelDatabase lookup)
-        base_params.model = kwargs.get("model", DEFAULT_ANTHROPIC_MODEL)  # Override with Anthropic-specific settings
+        base_params = super()._initialize_default_params(
+            kwargs
+        )  # Get base defaults from parent (includes ModelDatabase lookup)
+        base_params.model = kwargs.get(
+            "model", DEFAULT_ANTHROPIC_MODEL
+        )  # Override with Anthropic-specific settings
 
         return base_params
 
@@ -129,16 +137,16 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         return self.context.config.anthropic.base_url if self.context.config.anthropic else None
 
     def _get_cache_mode(self) -> str:
-        """Get the cache mode configuration. Default 'auto'
-        """
+        """Get the cache mode configuration. Default 'auto'"""
         if self.context.config and self.context.config.anthropic:
             return self.context.config.anthropic.cache_mode
         return "auto"  # Default
 
-    async def _prepare_tools(self, structured_model: Optional[Type[ModelT]] = None) -> List[ToolParam]:
+    async def _prepare_tools(
+        self, structured_model: Optional[Type[ModelT]] = None
+    ) -> List[ToolParam]:
         """Prepare tools for the API call, handling structured output mode."""
         if structured_model:
-
             return [
                 ToolParam(
                     name="return_structured_output",
@@ -163,42 +171,56 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         Apply conversation caching. Returns number of cache blocks applied.
         """
         if cache_mode != "off" and isinstance(system_prompt, str) and system_prompt:
-            self.logger.debug("Applied cache_control to system prompt (caches tools+system in one block)")
+            self.logger.debug(
+                "Applied cache_control to system prompt (caches tools+system in one block)"
+            )
             return [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
-        
+
         if not isinstance(system_prompt, str):
             self.logger.debug(f"System prompt is not a string: {type(system_prompt)}")
         return system_prompt
 
     async def _apply_conversation_cache(self, messages: List[MessageParam], cache_mode: str) -> int:
         """Apply conversation caching if in auto mode. Returns number of cache blocks applied."""
-        
+
         if cache_mode != "auto" or not self.history.should_apply_conversation_cache():
             return 0
-        
+
         cache_updates = self.history.get_conversation_cache_updates()
-        
+
         if cache_updates["remove"]:
             self.history.remove_cache_control_from_messages(messages, cache_updates["remove"])
-            self.logger.debug(f"Removed conversation cache_control from positions {cache_updates['remove']}")
+            self.logger.debug(
+                f"Removed conversation cache_control from positions {cache_updates['remove']}"
+            )
 
         if cache_updates["add"]:
-            applied_count = self.history.add_cache_control_to_messages(messages, cache_updates["add"])
+            applied_count = self.history.add_cache_control_to_messages(
+                messages, cache_updates["add"]
+            )
             if applied_count > 0:
                 self.history.apply_conversation_cache_updates(cache_updates)
-                self.logger.debug(f"Applied conversation cache_control to positions {cache_updates['add']} ({applied_count} blocks)")
+                self.logger.debug(
+                    f"Applied conversation cache_control to positions {cache_updates['add']} ({applied_count} blocks)"
+                )
                 return applied_count
             else:
-                self.logger.debug(f"Failed to apply conversation cache_control to positions {cache_updates['add']}")
-        
+                self.logger.debug(
+                    f"Failed to apply conversation cache_control to positions {cache_updates['add']}"
+                )
+
         return 0
 
-    def _check_cache_limit(self, conversation_cache_count: int, system_prompt: Any, cache_mode: str):
+    def _check_cache_limit(
+        self, conversation_cache_count: int, system_prompt: Any, cache_mode: str
+    ):
         """Warns if the number of cache blocks exceeds Anthropic's limit."""
         system_cache_count = 1 if cache_mode != "off" and system_prompt else 0
         total_cache_blocks = conversation_cache_count + system_cache_count
         if total_cache_blocks > 4:
-            self.logger.warning(f"Total cache blocks ({total_cache_blocks}) exceeds Anthropic limit of 4")
+            self.logger.warning(
+                f"Total cache blocks ({total_cache_blocks}) exceeds Anthropic limit of 4"
+            )
 
     async def _process_structured_output(
         self,
@@ -221,14 +243,18 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         """
         tool_args = content_block.input
         tool_use_id = content_block.id
-        
+
         # Show the formatted JSON response to the user
-        json_response = json.dumps(tool_args, indent=2) 
+        json_response = json.dumps(tool_args, indent=2)
         await self.show_assistant_message(json_response)
 
-        structured_content = TextContent(type="text", text=json.dumps(tool_args))  # Create the content for responses
+        structured_content = TextContent(
+            type="text", text=json.dumps(tool_args)
+        )  # Create the content for responses
 
-        tool_result = CallToolResult(isError=False, content=[structured_content])  # Create a CallToolResult to satisfy Anthropic's API requirements. This represents the "result" of our structured output "tool"
+        tool_result = CallToolResult(
+            isError=False, content=[structured_content]
+        )  # Create a CallToolResult to satisfy Anthropic's API requirements. This represents the "result" of our structured output "tool"
 
         return tool_use_id, tool_result, structured_content
 
@@ -243,20 +269,17 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         Process a regular MCP tool call via the MCP aggregator.
         """
         if is_first_tool:
-            await self.show_assistant_message(
-                message_text, 
-                content_block.name
-            )
+            await self.show_assistant_message(message_text, content_block.name)
 
         self.show_tool_call(
-            available_tools=available_tools, 
-            tool_name=content_block.name, 
+            available_tools=available_tools,
+            tool_name=content_block.name,
             tool_args=content_block.input,
         )
         tool_call_request = CallToolRequest(
             method="tools/call",
             params=CallToolRequestParams(
-                name=content_block.name, 
+                name=content_block.name,
                 arguments=content_block.input,
             ),
         )
@@ -296,16 +319,18 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                     tool_result,
                     structured_content,
                 ) = await self._process_structured_output(content_block=content_block)
-                
+
                 final_content_responses.append(structured_content)
-                
-                tool_results_for_api.append((tool_use_id, tool_result)) # Add to tool_results to satisfy Anthropic's API requirement for tool_result messages
+
+                tool_results_for_api.append(
+                    (tool_use_id, tool_result)
+                )  # Add to tool_results to satisfy Anthropic's API requirement for tool_result messages
             else:
                 # Regular tool: call external MCP tool
                 tool_use_id, tool_result = await self._process_regular_tool_call(
-                    content_block=content_block, 
-                    available_tools=available_tools, 
-                    is_first_tool=is_first_tool, 
+                    content_block=content_block,
+                    available_tools=available_tools,
+                    is_first_tool=is_first_tool,
                     message_text=message_text,
                 )
 
@@ -315,7 +340,12 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         return tool_results_for_api, final_content_responses
 
     def _prepare_request_payload(
-        self, messages: List[MessageParam], params: RequestParams, tools: List[ToolParam], system_prompt: Any, structured_model: Optional[Type[ModelT]]
+        self,
+        messages: List[MessageParam],
+        params: RequestParams,
+        tools: List[ToolParam],
+        system_prompt: Any,
+        structured_model: Optional[Type[ModelT]],
     ) -> dict:
         """Assembles the final dictionary of arguments for the Anthropic API call."""
         base_args = {
@@ -329,7 +359,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             base_args["tool_choice"] = {"type": "tool", "name": "return_structured_output"}
         if params.maxTokens is not None:
             base_args["max_tokens"] = params.maxTokens
-        
+
         # Use the base class method to merge remaining sampling parameters
         return self.prepare_provider_arguments(base_args, params, self.ANTHROPIC_EXCLUDE_FIELDS)
 
@@ -345,7 +375,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         response_string = response.content[0].text
 
         return response_string
-        
+
     async def _execute_streaming_call(self, arguments: dict, model: str) -> Message:
         """Executes the API call, processes the stream for real-time feedback, and returns the final message."""
         estimated_tokens = 0
@@ -353,36 +383,56 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             async with self.client.messages.stream(**arguments) as stream:
                 async for event in stream:
                     if event.type == "content_block_delta" and event.delta.type == "text_delta":
-                        estimated_tokens = self._update_streaming_progress(event.delta.text, model, estimated_tokens)
+                        estimated_tokens = self._update_streaming_progress(
+                            event.delta.text, model, estimated_tokens
+                        )
                     elif event.type == "message_delta" and hasattr(event, "usage"):
                         self._log_final_streaming_progress(event.usage.output_tokens, model)
-                
+
                 message = await stream.get_final_message()
                 if hasattr(message, "usage") and message.usage:
-                    self.logger.info(f"Streaming complete - Model: {model}, Input tokens: {message.usage.input_tokens}, Output tokens: {message.usage.output_tokens}")
+                    self.logger.info(
+                        f"Streaming complete - Model: {model}, Input tokens: {message.usage.input_tokens}, Output tokens: {message.usage.output_tokens}"
+                    )
                 return message
         except AuthenticationError as e:
-            raise ProviderKeyError("Invalid Anthropic API key was rejected during a call.", "Please check your API key.") from e
+            raise ProviderKeyError(
+                "Invalid Anthropic API key was rejected during a call.",
+                "Please check your API key.",
+            ) from e
         except APIError as e:
             self.logger.error(f"Anthropic API Error: {e}", exc_info=True)
-            
+
             return Message(  # Create a synthetic error message to avoid crashing the agent
-                id="error", model="error", role="assistant", type="message",
+                id="error",
+                model="error",
+                role="assistant",
+                type="message",
                 content=[TextBlock(type="text", text=f"Error during generation: {e}")],
-                stop_reason="end_turn", usage=Usage(input_tokens=0, output_tokens=0)
+                stop_reason="end_turn",
+                usage=Usage(input_tokens=0, output_tokens=0),
             )
-           
+
     async def _process_response_actions(
-        self, response: Message, messages: List[MessageParam], available_tools: List[ToolParam], params: RequestParams, structured_model: Optional[Type[ModelT]]
+        self,
+        response: Message,
+        messages: List[MessageParam],
+        available_tools: List[ToolParam],
+        params: RequestParams,
+        structured_model: Optional[Type[ModelT]],
     ) -> Tuple[str, List[ContentBlock], Optional[MessageParam]]:
         """
         Processes the final API message, handles actions based on stop_reason, and returns the outcome.
         Returns a tuple of (action, content_responses, next_message_to_append).
         """
         response_as_message_param = self.convert_message_to_message_param(response)
-        
+
         text_content = "".join(
-            [block.text for block in response.content if hasattr(block, "type") and block.type == "text"]
+            [
+                block.text
+                for block in response.content
+                if hasattr(block, "type") and block.type == "text"
+            ]
         )
 
         if response.stop_reason == "tool_use":
@@ -390,17 +440,21 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             if not tool_uses:
                 return self.ACTIONS.STOP, [], response_as_message_param
 
-            message_text = text_content or Text("the assistant requested tool calls", style="dim green italic")
+            message_text = text_content or Text(
+                "the assistant requested tool calls", style="dim green italic"
+            )
             tool_results_for_api, tool_content = await self._process_tool_calls(
                 tool_uses, available_tools, message_text, structured_model
             )
-            
+
             # For structured output, we stop after getting the tool call result.
             if structured_model:
                 return self.ACTIONS.STOP, tool_content, response_as_message_param
-            
+
             # For regular tools, we create a tool_results message and continue the loop.
-            tool_results_message = AnthropicConverter.create_tool_results_message(tool_results_for_api)
+            tool_results_message = AnthropicConverter.create_tool_results_message(
+                tool_results_for_api
+            )
             return "CONTINUE_WITH_TOOLS", tool_content, tool_results_message
 
         # Handle all terminal states
@@ -408,8 +462,13 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             await self.show_assistant_message(text_content)
         elif response.stop_reason == "max_tokens":
             limit = f"({params.maxTokens})" if params.maxTokens else ""
-            await self.show_assistant_message(Text(f"the assistant has reached the maximum token limit {limit}", style="dim green italic"))
-        
+            await self.show_assistant_message(
+                Text(
+                    f"the assistant has reached the maximum token limit {limit}",
+                    style="dim green italic",
+                )
+            )
+
         final_responses = [TextContent(type="text", text=text_content)] if text_content else []
         return self.ACTIONS.STOP, final_responses, response_as_message_param
 
@@ -472,7 +531,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         """
         # Initialization of History Incl. the New Message
         params = self.get_request_params(request_params)
-        messages: List[MessageParam] = self.history.get(include_completion_history=params.use_history)
+        messages: List[MessageParam] = self.history.get(
+            include_completion_history=params.use_history
+        )
         messages.append(message_param)
         all_content_responses: List[ContentBlock] = []
 
@@ -489,16 +550,23 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             self._log_chat_progress(self.chat_turn(), model=params.model)
 
             if hasattr(params, "context_truncation_mode") and params.context_truncation_mode:
-                # 1. Convert from Anthropic's format to your internal MCP format                
-                multipart_messages = AnthropicConverter.convert_from_anthropic_list_to_multipart(messages)
+                # 1. Convert from Anthropic's format to your internal MCP format
+                multipart_messages = AnthropicConverter.convert_from_anthropic_list_to_multipart(
+                    messages
+                )
 
-                if hasattr(params, "context_truncation_length_limit") and params.context_truncation_length_limit:
+                if (
+                    hasattr(params, "context_truncation_length_limit")
+                    and params.context_truncation_length_limit
+                ):
                     token_limit_for_truncation = params.context_truncation_length_limit
                 else:
                     token_limit_for_truncation = params.maxTokens
 
                 # 2. Call the truncation manager to truncate the history if needed
-                truncated_multipart: List[PromptMessageMultipart] = await ContextTruncation.truncate_if_required(
+                truncated_multipart: List[
+                    PromptMessageMultipart
+                ] = await ContextTruncation.truncate_if_required(
                     messages=multipart_messages,
                     truncation_mode=params.context_truncation_mode,
                     limit=token_limit_for_truncation,
@@ -508,19 +576,33 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 )
 
                 # 3. If truncation occurred, convert back and update the messages list
-                old_token_length = ContextTruncation._estimate_tokens(messages=multipart_messages, model=params.model, system_prompt="")
-                new_token_length = ContextTruncation._estimate_tokens(messages=truncated_multipart, model=params.model, system_prompt="")
+                old_token_length = ContextTruncation._estimate_tokens(
+                    messages=multipart_messages, model=params.model, system_prompt=""
+                )
+                new_token_length = ContextTruncation._estimate_tokens(
+                    messages=truncated_multipart, model=params.model, system_prompt=""
+                )
 
                 if new_token_length < old_token_length:
                     self.logger.info(
                         f"History truncated from {old_token_length} to {new_token_length} tokens."
                     )
-                    messages = AnthropicConverter.convert_from_multipart_to_anthropic_list(truncated_multipart)
-            
+                    messages = AnthropicConverter.convert_from_multipart_to_anthropic_list(
+                        truncated_multipart
+                    )
+
             # 4. Apply Caching
-            final_system_prompt = self._apply_system_cache(system_prompt=system_prompt, cache_mode=cache_mode)
-            conversation_cache_count = await self._apply_conversation_cache(messages=messages, cache_mode=cache_mode)
-            self._check_cache_limit(conversation_cache_count=conversation_cache_count, system_prompt=final_system_prompt, cache_mode=cache_mode)
+            final_system_prompt = self._apply_system_cache(
+                system_prompt=system_prompt, cache_mode=cache_mode
+            )
+            conversation_cache_count = await self._apply_conversation_cache(
+                messages=messages, cache_mode=cache_mode
+            )
+            self._check_cache_limit(
+                conversation_cache_count=conversation_cache_count,
+                system_prompt=final_system_prompt,
+                cache_mode=cache_mode,
+            )
 
             # 5. Build Payload and Execute API Call
             arguments = self._prepare_request_payload(
@@ -546,10 +628,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             # 4. Track Usage
             if hasattr(response, "usage") and response.usage:
-                turn_usage = TurnUsage.from_anthropic(
-                    usage=response.usage,
-                    model=params.model
-                )
+                turn_usage = TurnUsage.from_anthropic(usage=response.usage, model=params.model)
                 self._finalize_turn_usage(turn_usage=turn_usage)
 
             # 5. Process Response and Determine Next Action
@@ -565,13 +644,17 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             if tool_results_message:
                 messages.append(tool_results_message)
-            
+
             if action == self.ACTIONS.STOP:
-                self.logger.debug(f"Iteration {i}: Stopping because action is {response.stop_reason}")
+                self.logger.debug(
+                    f"Iteration {i}: Stopping because action is {response.stop_reason}"
+                )
                 break
         else:
-            self.logger.warning(f"Exceeded max iterations ({params.max_iterations}) without stopping.")
-            
+            self.logger.warning(
+                f"Exceeded max iterations ({params.max_iterations}) without stopping."
+            )
+
         # 6. Finalize History
         # Apply cache control to system prompt
         if params.use_history:
@@ -599,18 +682,26 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         )
         return Prompt.assistant(*res)
 
-    def _prepare_and_set_history(self, multipart_messages: List[PromptMessageMultipart], is_template: bool) -> None:
+    def _prepare_and_set_history(
+        self, multipart_messages: List[PromptMessageMultipart], is_template: bool
+    ) -> None:
         """Converts messages and adds them to history, applying prompt caching if applicable."""
         cache_mode = self._get_cache_mode()
         converted = []
         for msg in multipart_messages:
             anthropic_msg = AnthropicConverter.convert_to_anthropic(msg)
             # Apply caching to template messages
-            if is_template and cache_mode in ["prompt", "auto"] and isinstance(anthropic_msg.get("content"), list):
+            if (
+                is_template
+                and cache_mode in ["prompt", "auto"]
+                and isinstance(anthropic_msg.get("content"), list)
+            ):
                 content_list = cast("list", anthropic_msg["content"])
                 if content_list and isinstance(content_list[-1], dict):
                     content_list[-1]["cache_control"] = {"type": "ephemeral"}
-                    self.logger.debug(f"Applied cache_control to template message with role {anthropic_msg.get('role')}")
+                    self.logger.debug(
+                        f"Applied cache_control to template message with role {anthropic_msg.get('role')}"
+                    )
             converted.append(anthropic_msg)
         self.history.extend(converted, is_prompt=is_template)
 
@@ -621,7 +712,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         is_template: bool = False,
     ) -> PromptMessageMultipart:
         """Applies a prompt, handling history and generating a response if the last message is from the user."""
-        last_message = multipart_messages[-1]  # Check the last message role      
+        last_message = multipart_messages[-1]  # Check the last message role
         messages_to_add_to_history = (
             multipart_messages[:-1] if last_message.role == "user" else multipart_messages
         )
@@ -631,7 +722,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             self.logger.debug("Last message in prompt is from user, generating assistant response")
             message_param = AnthropicConverter.convert_to_anthropic(last_message)
             return await self.generate_messages(message_param, request_params)
-        
+
         self.logger.debug("Last message in prompt is from assistant, returning it directly.")
         return last_message
 
@@ -641,11 +732,10 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         model: Type[ModelT],
         request_params: Optional[RequestParams] = None,
     ) -> Tuple[Optional[ModelT], PromptMessageMultipart]:
-        """Applies a prompt and generates a structured (JSON) response.
-        """
+        """Applies a prompt and generates a structured (JSON) response."""
         last_message = multipart_messages[-1]  # Check the last message role
-        
-        messages_to_add_to_history = ( # Add all previous messages to history (or all messages if last is from assistant)
+
+        messages_to_add_to_history = (  # Add all previous messages to history (or all messages if last is from assistant)
             multipart_messages[:-1] if last_message.role == "user" else multipart_messages
         )
 
@@ -655,41 +745,36 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             self.logger.debug("Last message in prompt is from user, generating structured response")
             message_param = AnthropicConverter.convert_to_anthropic(last_message)
             response_content = await self._anthropic_completion(
-                message_param=message_param, 
-                request_params=request_params, 
-                structured_model=model
+                message_param=message_param, request_params=request_params, structured_model=model
             )
 
             for content in response_content:  # Extract the structured data from the response
                 if content.type == "text":
-                    try:    
+                    try:
                         data = json.loads(content.text)  # Parse the JSON response from the tool
                         parsed_model = model(**data)
                         return parsed_model, Prompt.assistant(content)
-                    
+
                     except (json.JSONDecodeError, ValueError) as e:
                         self.logger.error(f"Failed to parse structured output: {e}")
                         return None, Prompt.assistant(content)
-            
-            return None, Prompt.assistant()  # If no valid response found
 
+            return None, Prompt.assistant()  # If no valid response found
 
         # For assistant messages: Return the last message content
         self.logger.debug("Last message in prompt is from assistant, returning it directly")
         return None, last_message
-    
+
     def _update_streaming_progress(
-            self,
-            text_chunk: str,
-            model: str,
-            estimated_tokens: int,
+        self,
+        text_chunk: str,
+        model: str,
+        estimated_tokens: int,
     ) -> int:
         """
         This calls a method on the parent class AugmentedLLM.
         """
         return super()._update_streaming_progress(text_chunk, model, estimated_tokens)
-
-
 
     def _show_usage(self, raw_usage: Usage, turn_usage: TurnUsage) -> None:
         # Print raw usage for debugging
@@ -715,8 +800,8 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
     @classmethod
     def convert_message_to_message_param(
-        cls, 
-        message: Message, 
+        cls,
+        message: Message,
         **kwargs,
     ) -> MessageParam:
         """Convert a response object to an input parameter object to allow LLM calls to be chained."""
