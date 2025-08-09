@@ -2,9 +2,7 @@
 Context truncation manager for LLM conversations.
 """
 # region Imports -- External Imports
-import json
 from typing import List, Optional
-
 
 ## Types
 from mcp.types import (

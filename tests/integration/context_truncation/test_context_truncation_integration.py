@@ -4,8 +4,9 @@ Tests that context truncation parameters are properly passed to providers
 and that truncation logic is triggered correctly.
 """
 
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
 
 from mcp_agent.core.fastagent import FastAgent
 from mcp_agent.core.request_params import RequestParams

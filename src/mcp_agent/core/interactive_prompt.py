@@ -808,8 +808,8 @@ class InteractivePrompt:
             rich_print(f"Current history: {len(message_history)} messages")
 
             # Import the ContextTruncation class
-            from mcp_agent.llm.context_truncation_and_summarization import ContextTruncation
             from mcp_agent.core.agent_types import ContextTruncationMode
+            from mcp_agent.llm.context_truncation_and_summarization import ContextTruncation
 
             # Message history is already in PromptMessageMultipart format
             multipart_messages = message_history
@@ -840,7 +840,9 @@ class InteractivePrompt:
             try:
                 # Check if this is Anthropic provider
                 if hasattr(agent._llm, 'history') and 'anthropic' in str(type(agent._llm)).lower():
-                    from mcp_agent.llm.providers.multipart_converter_anthropic import AnthropicConverter
+                    from mcp_agent.llm.providers.multipart_converter_anthropic import (
+                        AnthropicConverter,
+                    )
                     provider_messages = AnthropicConverter.convert_from_multipart_to_anthropic_list(compacted_messages)
                     agent._llm.history.set(provider_messages)
                 

@@ -37,7 +37,11 @@ from mcp_agent.llm.sampling_format_converter import (
     BasicFormatConverter,
     ProviderFormatConverter,
 )
-from mcp_agent.llm.usage_tracking import TurnUsage, UsageAccumulator, create_turn_usage_from_messages
+from mcp_agent.llm.usage_tracking import (
+    TurnUsage,
+    UsageAccumulator,
+    create_turn_usage_from_messages,
+)
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.helpers.content_helpers import get_text
 from mcp_agent.mcp.interfaces import (
@@ -323,7 +327,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
             # Extract text from each content block
             if message.content:
                 for block_idx, block in enumerate(message.content):
-                    block_start_len = len(combined_content)
+
                     block_type = getattr(block, 'type', '').lower()
                     
                     if block_type == "text":
@@ -355,8 +359,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
                         tool_use_id = getattr(block, 'tool_use_id', '')
                         tool_content = getattr(block, 'content', [])
                         
-                        tool_result_start = len(combined_content)
-                        combined_content += f"[tool_result"
+                        combined_content += "[tool_result"
                         if tool_use_id:
                             combined_content += f" for {tool_use_id}"
                         combined_content += ": "
@@ -378,7 +381,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
                                         nested_chars += len(nested_text)
                             logger.warning(f"   🔧 Block {block_idx}: TOOL_RESULT (list), {nested_chars} chars from nested blocks")
                             if nested_chars > 10000:
-                                logger.warning(f"      Large tool result detected!")
+                                logger.warning("      Large tool result detected!")
                         else:
                             logger.warning(f"   🔧 Block {block_idx}: TOOL_RESULT (other type: {type(tool_content)})")
                         combined_content += "]"

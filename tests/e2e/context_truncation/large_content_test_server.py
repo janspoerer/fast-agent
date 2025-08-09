@@ -4,11 +4,10 @@ MCP server that generates large, predictable content for context truncation test
 """
 
 import asyncio
+
 from mcp.server import Server
 from mcp.types import (
-    CallToolRequest,
     CallToolResult,
-    ListToolsRequest,
     ListToolsResponse,
     TextContent,
     Tool,

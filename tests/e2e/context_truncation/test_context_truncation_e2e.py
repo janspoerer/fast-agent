@@ -5,6 +5,7 @@ like the OpenAI provider missing truncation logic entirely.
 """
 
 import pytest
+
 from mcp_agent.core.fastagent import FastAgent
 from mcp_agent.core.request_params import RequestParams
 

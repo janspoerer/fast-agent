@@ -4,15 +4,11 @@ Tests for the get_token_count() method in augmented_llm.py.
 This module tests the unified token counting functionality that leverages
 the existing usage_tracking.py infrastructure.
 """
-import json
 from unittest.mock import patch
 
-import pytest
 from mcp.types import TextContent
 
-from mcp_agent.core.request_params import RequestParams
 from mcp_agent.llm.augmented_llm_passthrough import PassthroughLLM
-from mcp_agent.llm.provider_types import Provider
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 
 
