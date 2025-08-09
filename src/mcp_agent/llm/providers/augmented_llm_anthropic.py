@@ -618,7 +618,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             if params.request_delay_seconds > 0.0:
                 self.logger.info(f"Sleeping for {self.PARAM_REQUEST_DELAY_SECONDS} seconds.")
-                asyncio.sleep(self.PARAM_REQUEST_DELAY_SECONDS)
+                await asyncio.sleep(self.PARAM_REQUEST_DELAY_SECONDS)
             response = await self._execute_streaming_call(
                 arguments=arguments,
                 model=params.model,

@@ -236,7 +236,7 @@ class GoogleNativeAugmentedLLM(AugmentedLLM[types.Content, types.Content]):
             "contents": message_string,
         }
 
-        api_response = self._execute_api_call(
+        api_response = await self._execute_api_call(
             payload=payload
         )
 
