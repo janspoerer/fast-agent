@@ -65,7 +65,7 @@ def test_llm_class_creation(mocker):
         return_value=mocker.MagicMock()
     )
     mocker.patch(
-        'mcp_agent.llm.providers.augmented_llm_openai.OpenAIAugmentedLLM._initialize_client',
+        'mcp_agent.llm.providers.augmented_llm_openai.OpenAIAugmentedLLM._openai_client',
         return_value=mocker.MagicMock()
     )
 
@@ -85,11 +85,7 @@ def test_llm_class_creation(mocker):
 
 def test_allows_generic_model(mocker):
     """Test that generic model names are allowed"""
-    # Mock the client and the base_url method for a more robust test
-    mocker.patch(
-        'mcp_agent.llm.providers.augmented_llm_generic.GenericAugmentedLLM._initialize_client',
-        return_value=mocker.MagicMock()
-    )
+    # Mock the base_url method for the generic provider (no _initialize_client method exists)
     mock_base_url = mocker.patch(
         'mcp_agent.llm.providers.augmented_llm_generic.GenericAugmentedLLM._base_url',
         return_value="http://localhost:11434/v1"

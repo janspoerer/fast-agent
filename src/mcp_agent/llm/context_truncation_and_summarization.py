@@ -57,45 +57,62 @@ class ContextTruncation(ContextDependent):
         """
 
         logger.warning(f"""
-truncate_if_required()
+🔍 TRUNCATION DEBUG: truncate_if_required() called
                             
-messages: {messages[:20]}
-truncation_mode: {str(truncation_mode)[:20]}
-limit: {str(limit)}
-model_name: {model_name}
-system_prompt: {system_prompt[:20]}
+📊 Messages count: {len(messages)}
+📝 Truncation mode: {truncation_mode}
+🎯 Token limit: {limit}
+🤖 Model name: {model_name}
+💭 System prompt length: {len(system_prompt) if system_prompt else 0}
 
 """)
-        
 
-        logger.warning(f"""
+        # Debug: Log detailed message analysis
+        total_chars = 0
+        for i, msg in enumerate(messages):
+            msg_chars = sum(len(content.text) if hasattr(content, 'text') else len(str(content)) for content in msg.content)
+            total_chars += msg_chars
+            logger.warning(f"📨 Message {i}: role={msg.role}, chars={msg_chars}")
+            if i < 2:  # Log first 2 messages in detail
+                logger.warning(f"    Content preview: {str(msg.content)[:200]}...")
 
-limit: {str(limit)}
-
-""")
+        logger.warning(f"📏 Total character count across all messages: {total_chars}")
 
         # Use provider's native token counting for accuracy
+        logger.warning(f"🧮 Calling provider.get_token_count() with {len(messages)} messages...")
         estimated_tokens = provider.get_token_count(messages, system_prompt)
-        logger.warning(f"[006] estimated_tokens: {estimated_tokens}")
+        logger.warning(f"🎯 CRITICAL: estimated_tokens returned: {estimated_tokens}")
+        logger.warning(f"🔍 Ratio: {estimated_tokens}/{total_chars} = {estimated_tokens/total_chars if total_chars > 0 else 0:.4f} tokens per char")
 
 
         ############## RETURN EARLY IF NO TRUNCATION OR NO LIMIT ###############
         if not truncation_mode or truncation_mode == ContextTruncationMode.NONE or not limit:
+            logger.warning(f"🚫 EARLY RETURN: No truncation (mode={truncation_mode}, limit={limit})")
             return messages
 
         ############# NO NEED TO TRUNCATE IF LIMIT NOT CROSSED ##############
         if estimated_tokens <= limit:
+            logger.warning(f"✅ NO TRUNCATION NEEDED: {estimated_tokens} <= {limit} tokens")
             return messages
 
         ########## IF ARGUMENTS VALID: ACT UPON TRUNCATION MODE ##########
+        logger.warning(f"🚨 TRUNCATION TRIGGERED: {estimated_tokens} > {limit} tokens!")
+        logger.warning(f"🔄 Applying {truncation_mode} mode...")
+        
         if truncation_mode == ContextTruncationMode.SUMMARIZE:
-            return await cls._summarize_and_truncate(messages, limit, provider)
+            logger.warning("📝 Starting SUMMARIZE truncation...")
+            result = await cls._summarize_and_truncate(messages, limit, provider)
+            logger.warning(f"✅ SUMMARIZE complete, returning {len(result)} messages")
+            return result
         
         elif truncation_mode == ContextTruncationMode.REMOVE:
-            logger.warning("[004]")
-            return cls._truncate(messages, limit, system_prompt, provider)
+            logger.warning("✂️ Starting REMOVE truncation...")
+            result = cls._truncate(messages, limit, system_prompt, provider)
+            logger.warning(f"✅ REMOVE complete, returning {len(result)} messages")
+            return result
         
-        ######## RETURN TRUNCATED MESSAGES ############
+        ######## FALLBACK - RETURN ORIGINAL MESSAGES ############
+        logger.warning(f"⚠️ FALLBACK: Unknown truncation mode {truncation_mode}, returning original messages")
         return messages
 
     @classmethod

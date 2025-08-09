@@ -297,27 +297,46 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         Returns:
             Total token count for the messages
         """
+        # 🔍 DEBUG: Start detailed logging
+        logger = get_logger(__name__)
+        logger.warning(f"🧮 TOKEN COUNT DEBUG: Starting get_token_count() with {len(messages)} messages")
+        
         # Convert messages to combined text content for token counting
         combined_content = ""
         
         # Add system prompt if provided
         if system_prompt:
+            system_chars = len(system_prompt)
             combined_content += system_prompt + "\n\n"
+            logger.warning(f"📝 System prompt: {system_chars} chars")
+        else:
+            logger.warning("📝 No system prompt")
         
         # Convert each message to text
-        for message in messages:
+        for msg_idx, message in enumerate(messages):
+            msg_start_len = len(combined_content)
             # Add role prefix
             combined_content += f"{message.role}: "
             
+            logger.warning(f"📨 Processing message {msg_idx}: role={message.role}, blocks={len(message.content) if message.content else 0}")
+            
             # Extract text from each content block
             if message.content:
-                for block in message.content:
+                for block_idx, block in enumerate(message.content):
+                    block_start_len = len(combined_content)
                     block_type = getattr(block, 'type', '').lower()
                     
                     if block_type == "text":
                         text = getattr(block, 'text', '')
                         if text:
                             combined_content += text
+                            text_chars = len(text)
+                            logger.warning(f"   📄 Block {block_idx}: TEXT, {text_chars} chars")
+                            if text_chars > 10000:  # Log preview for very large text blocks
+                                logger.warning(f"      Preview: {text[:200]}...")
+                        else:
+                            logger.warning(f"   📄 Block {block_idx}: TEXT (empty)")
+                    
                     
                     elif block_type == "tool_use":
                         tool_name = getattr(block, 'name', '')
@@ -336,6 +355,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
                         tool_use_id = getattr(block, 'tool_use_id', '')
                         tool_content = getattr(block, 'content', [])
                         
+                        tool_result_start = len(combined_content)
                         combined_content += f"[tool_result"
                         if tool_use_id:
                             combined_content += f" for {tool_use_id}"
@@ -343,13 +363,24 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
                         
                         if isinstance(tool_content, str):
                             combined_content += tool_content
+                            tool_chars = len(tool_content)
+                            logger.warning(f"   🔧 Block {block_idx}: TOOL_RESULT (string), {tool_chars} chars")
+                            if tool_chars > 10000:
+                                logger.warning(f"      Preview: {tool_content[:200]}...")
                         elif isinstance(tool_content, list):
+                            nested_chars = 0
                             for nested_block in tool_content:
                                 nested_type = getattr(nested_block, 'type', '').lower()
                                 if nested_type == "text":
                                     nested_text = getattr(nested_block, 'text', '')
                                     if nested_text:
                                         combined_content += nested_text
+                                        nested_chars += len(nested_text)
+                            logger.warning(f"   🔧 Block {block_idx}: TOOL_RESULT (list), {nested_chars} chars from nested blocks")
+                            if nested_chars > 10000:
+                                logger.warning(f"      Large tool result detected!")
+                        else:
+                            logger.warning(f"   🔧 Block {block_idx}: TOOL_RESULT (other type: {type(tool_content)})")
                         combined_content += "]"
                     
                     elif block_type == "image":
@@ -358,12 +389,20 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
                     
                     else:
                         # Unknown block types
+                        logger.warning(f"   ❓ Block {block_idx}: UNKNOWN TYPE ({block_type})")
                         combined_content += f"[{block_type}]"
             
+            msg_chars = len(combined_content) - msg_start_len
+            logger.warning(f"   📏 Message {msg_idx} total: {msg_chars} chars")
             combined_content += "\n"
+        
+        total_combined_chars = len(combined_content)
+        logger.warning(f"📊 COMBINED CONTENT: {total_combined_chars} total characters")
+        logger.warning(f"🔍 Combined content preview: {combined_content[:500]}...")
         
         # Use existing usage tracking to get token count
         # Create a fake turn usage to extract token count
+        logger.warning(f"🧮 Calling create_turn_usage_from_messages() with {total_combined_chars} chars...")
         turn_usage = create_turn_usage_from_messages(
             input_content=combined_content,
             output_content="",  # Empty output for counting input only
@@ -371,7 +410,12 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
             model_type="token_counting"
         )
         
-        return turn_usage.input_tokens
+        result_tokens = turn_usage.input_tokens
+        ratio = result_tokens / total_combined_chars if total_combined_chars > 0 else 0
+        logger.warning(f"🎯 TOKEN COUNT RESULT: {result_tokens} tokens")
+        logger.warning(f"📈 Ratio: {ratio:.4f} tokens/char (expected ~0.25-0.33)")
+        
+        return result_tokens
 
     async def structured(
         self,
