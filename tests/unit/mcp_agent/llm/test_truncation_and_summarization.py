@@ -4,9 +4,9 @@ Tests for context_truncation_and_summarization.py module.
 This module tests the context truncation and summarization functionality,
 including all public and private methods in the ContextTruncation class.
 """
+import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
-import pytest
 from mcp.types import TextContent
 
 from mcp_agent.core.agent_types import ContextTruncationMode
@@ -14,10 +14,8 @@ from mcp_agent.llm.augmented_llm import AugmentedLLM
 from mcp_agent.llm.context_truncation_and_summarization import ContextTruncation
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 
-pytestmark = pytest.mark.anyio
 
-
-class TestContextTruncation:
+class TestContextTruncation(unittest.IsolatedAsyncioTestCase):
     """Test cases for the ContextTruncation class."""
 
     def create_mock_provider(self, token_count_return=1000):
