@@ -37,7 +37,7 @@ from mcp_agent.llm.sampling_format_converter import (
     BasicFormatConverter,
     ProviderFormatConverter,
 )
-from mcp_agent.llm.usage_tracking import TurnUsage, UsageAccumulator
+from mcp_agent.llm.usage_tracking import TurnUsage, UsageAccumulator, create_turn_usage_from_messages
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.helpers.content_helpers import get_text
 from mcp_agent.mcp.interfaces import (
@@ -278,6 +278,100 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
             String representation of the assistant's response if generated,
             or the last assistant message in the prompt
         """
+
+    def get_token_count(
+        self, 
+        messages: List["PromptMessageMultipart"], 
+        system_prompt: Optional[str] = None
+    ) -> int:
+        """
+        Get token count for messages using existing usage tracking functionality.
+        
+        This method leverages the existing create_turn_usage_from_messages() function
+        to convert message content to tokens, eliminating duplicate token counting code.
+        
+        Args:
+            messages: List of PromptMessageMultipart objects to count tokens for
+            system_prompt: Optional system prompt to include in count
+            
+        Returns:
+            Total token count for the messages
+        """
+        # Convert messages to combined text content for token counting
+        combined_content = ""
+        
+        # Add system prompt if provided
+        if system_prompt:
+            combined_content += system_prompt + "\n\n"
+        
+        # Convert each message to text
+        for message in messages:
+            # Add role prefix
+            combined_content += f"{message.role}: "
+            
+            # Extract text from each content block
+            if message.content:
+                for block in message.content:
+                    block_type = getattr(block, 'type', '').lower()
+                    
+                    if block_type == "text":
+                        text = getattr(block, 'text', '')
+                        if text:
+                            combined_content += text
+                    
+                    elif block_type == "tool_use":
+                        tool_name = getattr(block, 'name', '')
+                        tool_args = getattr(block, 'input', {})
+                        tool_id = getattr(block, 'id', '')
+                        
+                        combined_content += f"[tool_use: {tool_name}"
+                        if tool_args:
+                            import json
+                            combined_content += f" with args: {json.dumps(tool_args)}"
+                        if tool_id:
+                            combined_content += f" id: {tool_id}"
+                        combined_content += "]"
+                    
+                    elif block_type == "tool_result":
+                        tool_use_id = getattr(block, 'tool_use_id', '')
+                        tool_content = getattr(block, 'content', [])
+                        
+                        combined_content += f"[tool_result"
+                        if tool_use_id:
+                            combined_content += f" for {tool_use_id}"
+                        combined_content += ": "
+                        
+                        if isinstance(tool_content, str):
+                            combined_content += tool_content
+                        elif isinstance(tool_content, list):
+                            for nested_block in tool_content:
+                                nested_type = getattr(nested_block, 'type', '').lower()
+                                if nested_type == "text":
+                                    nested_text = getattr(nested_block, 'text', '')
+                                    if nested_text:
+                                        combined_content += nested_text
+                        combined_content += "]"
+                    
+                    elif block_type == "image":
+                        # Images add fixed token overhead
+                        combined_content += "[image]"
+                    
+                    else:
+                        # Unknown block types
+                        combined_content += f"[{block_type}]"
+            
+            combined_content += "\n"
+        
+        # Use existing usage tracking to get token count
+        # Create a fake turn usage to extract token count
+        turn_usage = create_turn_usage_from_messages(
+            input_content=combined_content,
+            output_content="",  # Empty output for counting input only
+            model=self.default_request_params.model,
+            model_type="token_counting"
+        )
+        
+        return turn_usage.input_tokens
 
     async def structured(
         self,

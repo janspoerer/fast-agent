@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from mcp.types import (
     CallToolRequest,
@@ -582,3 +582,4 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
         result = inputSchema.copy()
         result["properties"] = {}
         return result
+

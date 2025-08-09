@@ -5,7 +5,6 @@ Context truncation manager for LLM conversations.
 import json
 from typing import List, Optional
 
-import tiktoken
 
 ## Types
 from mcp.types import (
@@ -75,38 +74,33 @@ limit: {str(limit)}
 
 """)
 
-        estimated_tokens = cls._estimate_tokens(
-            messages=messages, 
-            model=model_name,
-        )
+        # Use provider's native token counting for accuracy
+        estimated_tokens = provider.get_token_count(messages, system_prompt)
         logger.warning(f"[006] estimated_tokens: {estimated_tokens}")
 
+
+        ############## RETURN EARLY IF NO TRUNCATION OR NO LIMIT ###############
+        if not truncation_mode or truncation_mode == ContextTruncationMode.NONE or not limit:
+            return messages
 
         ############# NO NEED TO TRUNCATE IF LIMIT NOT CROSSED ##############
         if estimated_tokens <= limit:
             return messages
 
-        ############## RETURN EARLY IF NO TRUNCATION OR NO LIMIT ###############
-        if not truncation_mode or truncation_mode == ContextTruncationMode.NONE or not limit:
-            return messages
-        
-        elif not cls._needs_truncation(messages, limit, model_name):
-            return messages
-
         ########## IF ARGUMENTS VALID: ACT UPON TRUNCATION MODE ##########
         if truncation_mode == ContextTruncationMode.SUMMARIZE:
-            return await cls._summarize_and_truncate(messages, limit, model_name, provider=provider)
+            return await cls._summarize_and_truncate(messages, limit, provider)
         
         elif truncation_mode == ContextTruncationMode.REMOVE:
             logger.warning("[004]")
-            return cls._truncate(messages, limit, model_name)
+            return cls._truncate(messages, limit, system_prompt, provider)
         
         ######## RETURN TRUNCATED MESSAGES ############
         return messages
 
     @classmethod
     async def _summarize_and_truncate(
-        cls, messages: List[PromptMessageMultipart], max_tokens: int, model: str, provider: AugmentedLLM
+        cls, messages: List[PromptMessageMultipart], max_tokens: int, provider: AugmentedLLM
     ) -> List[PromptMessageMultipart]:
         """(Private) Truncates history by summarizing older messages."""
         logger.info(f"Context has exceeded {max_tokens} tokens. Applying summarization.")
@@ -159,131 +153,44 @@ limit: {str(limit)}
         
         return summary_string
 
-    @classmethod
-    def _estimate_tokens(
-        cls, 
-        messages: List[PromptMessageMultipart], 
-        model: str, 
-        system_prompt: Optional[str] = None,
-    ) -> int:
-        """Estimate the number of tokens for a list of messages using tiktoken."""
-        try:
-            encoding = tiktoken.encoding_for_model(model)
-        except KeyError:
-            logger.warning(f"Model {model} not found. Using cl100k_base tokenizer.")
-            encoding = tiktoken.get_encoding("cl100k_base")
-
-        total_tokens = len(encoding.encode(system_prompt)) if system_prompt else 0
-
-        for message_index, message in enumerate(messages):
-            # Assuming first_text() gets the main text content
-
-            num_tokens_current_message = cls._estimate_tokens_from_message(message=message, encoding=encoding)
-            total_tokens += num_tokens_current_message
-            logger.info(f"[007] Message {message_index} with text {str(message)[:1000]} has {num_tokens_current_message} tokens.")
-
-        logger.info("[008] Adding an overhead of 4 tokens per message.")
-        total_tokens += len(messages) * 4 # Approximation for message overhead
-        return total_tokens
-
-    @classmethod
-    def _estimate_tokens_from_message(
-            cls,
-            message: PromptMessageMultipart,
-            encoding: tiktoken.Encoding
-    ) -> int:
-        """Estimates tokens for a single, potentially multi-paar message."""
-
-        tokens = 4  # Base overhead.
-
-        if not message.content:
-            return tokens
-        
-        for block in message.content:
-            block_type = getattr(block, 'type', '').lower()
-
-            if block_type == "text":
-                text = getattr(block, 'text', '')
-                if text:
-                    tokens += len(encoding.encode(text))
-
-            elif block_type == "tool_use":
-                tool_name = getattr(block, 'name', '')
-                tool_args = getattr(block, 'input', {})
-                tool_id = getattr(block, 'id', '')
-
-                if tool_name:
-                    tokens += len(encoding.encode(tool_name))
-                if tool_args:
-                    args_json = json.dumps(tool_args)
-                    tokens += len(encoding.encode(args_json))
-                if tool_id:
-                    tokens += len(encoding.encode(tool_id))
-                
-                tokens += 10  # Add overhead for tool use structure
-
-        
-            elif block_type == "tool_result":
-                # Count tool result ID
-                tool_use_id = getattr(block, 'tool_use_id', '')
-                if tool_use_id:
-                    tokens += len(encoding.encode(tool_use_id))
-                
-                # Count tool result content
-                tool_content = getattr(block, 'content', [])
-                if isinstance(tool_content, str):
-                    tokens += len(encoding.encode(tool_content))
-                elif isinstance(tool_content, list):
-                    for nested_block in tool_content:
-                        nested_type = getattr(nested_block, 'type', '').lower()
-                        if nested_type == "text":
-                            nested_text = getattr(nested_block, 'text', '')
-                            if nested_text:
-                                tokens += len(encoding.encode(nested_text))
-                        # Add more nested block types as needed
-                
-                # Add overhead for tool result structure
-                tokens += 10
-                
-            elif block_type == "image":
-                # Images have a fixed token cost in most models
-                tokens += 85  # Anthropic's typical image token cost
-                
-            elif block_type == "resource":
-                # Estimate tokens for embedded resources
-                resource = getattr(block, 'resource', None)
-                if resource:
-                    # Count resource text content
-                    resource_text = getattr(resource, 'text', '')
-                    if resource_text:
-                        tokens += len(encoding.encode(resource_text))
-                    else:
-                        # For binary resources, add a fixed cost
-                        tokens += 20
-            
-            else:
-                # Unknown block type - add minimal overhead
-                logger.warning(f"Unknown block type in token estimation: {block_type}")
-                tokens += 5
-        
-        return tokens
 
     @classmethod
     def _needs_truncation(
-        cls, messages: List[PromptMessageMultipart], max_tokens: int, model: str, system_prompt: str | None = None
+        cls, 
+        messages: List[PromptMessageMultipart], 
+        max_tokens: int, 
+        system_prompt: str | None = None,
+        provider: AugmentedLLM | None = None
     ) -> bool:
         """Check if the context needs to be truncated."""
         if not max_tokens:
             return False
-        current_tokens = cls._estimate_tokens(messages, model, system_prompt)
+        
+        if provider:
+            current_tokens = provider.get_token_count(messages, system_prompt)
+        else:
+            # This shouldn't happen since provider should always be provided
+            logger.warning("No provider available for token counting - this may cause inaccurate counts")
+            return False
+        
         return current_tokens > max_tokens
 
     @classmethod
     def _truncate(
-        cls, messages: List[PromptMessageMultipart], max_tokens: int, model: str, system_prompt: str | None = None
+        cls, 
+        messages: List[PromptMessageMultipart], 
+        max_tokens: int, 
+        system_prompt: str | None = None, 
+        provider: AugmentedLLM | None = None
     ) -> List[PromptMessageMultipart]:
         """(Private) Truncates history by removing the oldest messages."""
-        initial_tokens = cls._estimate_tokens(messages, model, system_prompt)
+        if provider:
+            initial_tokens = provider.get_token_count(messages, system_prompt)
+        else:
+            # This shouldn't happen since provider should always be provided
+            logger.warning("No provider available for token counting in truncate")
+            return messages
+            
         logger.warning(
             f"Context ({initial_tokens} tokens) has exceeded the limit of {max_tokens} tokens. "
             "Applying simple truncation (remove)."
@@ -293,7 +200,7 @@ limit: {str(limit)}
         
         # Loop until the token count is within the limit
         while len(truncated_messages) >= 1 and cls._needs_truncation(
-            messages=truncated_messages, max_tokens=max_tokens, model=model, system_prompt=system_prompt
+            messages=truncated_messages, max_tokens=max_tokens, system_prompt=system_prompt, provider=provider
         ):
             
             # Find the first non-system message to remove
@@ -304,7 +211,11 @@ limit: {str(limit)}
             else:  # No non-system messages left to remove
                 break 
         
-        final_tokens = cls._estimate_tokens(truncated_messages, model, system_prompt)
+        if provider:
+            final_tokens = provider.get_token_count(truncated_messages, system_prompt)
+        else:
+            # This shouldn't happen since provider should always be provided
+            final_tokens = 0
         logger.info(f"Simple truncation complete. New token count: {final_tokens}")
 
         return truncated_messages

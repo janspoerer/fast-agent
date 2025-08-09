@@ -576,11 +576,11 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 )
 
                 # 3. If truncation occurred, convert back and update the messages list
-                old_token_length = ContextTruncation._estimate_tokens(
-                    messages=multipart_messages, model=params.model, system_prompt=""
+                old_token_length = self.get_token_count(
+                    messages=multipart_messages, system_prompt=None
                 )
-                new_token_length = ContextTruncation._estimate_tokens(
-                    messages=truncated_multipart, model=params.model, system_prompt=""
+                new_token_length = self.get_token_count(
+                    messages=truncated_multipart, system_prompt=None
                 )
 
                 if new_token_length < old_token_length:
@@ -821,3 +821,4 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 )
 
         return MessageParam(role="assistant", content=content, **kwargs)
+
