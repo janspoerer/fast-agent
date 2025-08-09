@@ -8,8 +8,8 @@ from mcp_agent.llm.providers.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 
 
-# Renamed the class to avoid pytest discovery. Now it can have an __init__.
-class MinimalLLM(AugmentedLLM):
+# Create a minimal testable subclass of AugmentedLLM
+class StubLLM(AugmentedLLM):
     """Minimal implementation of AugmentedLLM for testing purposes"""
 
     def __init__(self, *args, **kwargs):
@@ -32,8 +32,8 @@ class TestRequestParamsInLLM:
 
     def test_base_prepare_provider_arguments(self):
         """Test the base prepare_provider_arguments method"""
-        # Use the renamed helper class
-        llm = MinimalLLM()
+        # Create a testable LLM instance
+        llm = StubLLM()
 
         # Test with minimal base arguments
         base_args = {"model": "test-model"}
@@ -48,7 +48,7 @@ class TestRequestParamsInLLM:
 
     def test_prepare_arguments_with_exclusions(self):
         """Test prepare_provider_arguments with field exclusions"""
-        llm = MinimalLLM()
+        llm = StubLLM()
 
         # Test with exclusions
         base_args = {"model": "test-model"}
@@ -66,7 +66,7 @@ class TestRequestParamsInLLM:
 
     def test_prepare_arguments_with_metadata(self):
         """Test prepare_provider_arguments with metadata override"""
-        llm = MinimalLLM()
+        llm = StubLLM()
 
         # Test with metadata
         base_args = {"model": "test-model", "temperature": 0.2}
@@ -81,7 +81,7 @@ class TestRequestParamsInLLM:
 
     def test_response_format_handling(self):
         """Test handling of response_format parameter"""
-        llm = MinimalLLM()
+        llm = StubLLM()
 
         json_format = {
             "type": "json_schema",
@@ -181,7 +181,7 @@ class TestRequestParamsInLLM:
 
     def test_params_dont_overwrite_base_args(self):
         """Test that params don't overwrite base_args with the same key"""
-        llm = MinimalLLM()
+        llm = StubLLM()
 
         # Set up conflicting keys
         base_args = {"model": "base-model", "temperature": 0.5}
@@ -196,7 +196,7 @@ class TestRequestParamsInLLM:
 
     def test_none_values_not_included(self):
         """Test that None values from params are not included"""
-        llm = MinimalLLM()
+        llm = StubLLM()
 
         base_args = {"model": "test-model"}
         params = RequestParams(temperature=None, top_p=0.9)

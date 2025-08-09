@@ -81,12 +81,13 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
                 self._reasoning_effort = self.context.config.openai.reasoning_effort
 
         # Determine if we're using a reasoning model
-        # TODO -- move this to model capabilities, add o4.
+        # TODO -- move this to model capabilities database.
         chosen_model = self.default_request_params.model if self.default_request_params else None
         self._reasoning = chosen_model and (
             chosen_model.startswith("o3")
             or chosen_model.startswith("o1")
             or chosen_model.startswith("o4")
+            or chosen_model.startswith("gpt-5")
         )
         if self._reasoning:
             self.logger.info(
@@ -308,6 +309,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
         request_params = self.get_request_params(request_params=request_params)
 
         responses: List[ContentBlock] = []
+        model_name = self.default_request_params.model or DEFAULT_OPENAI_MODEL
 
         # TODO -- move this in to agent context management / agent group handling
         messages: List[ChatCompletionMessageParam] = []
@@ -320,14 +322,14 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
 
         response = await self.aggregator.list_tools()
         available_tools: List[ChatCompletionToolParam] | None = [
-            ChatCompletionToolParam(
-                type="function",
-                function={
+            {
+                "type": "function",
+                "function": {
                     "name": tool.name,
                     "description": tool.description if tool.description else "",
                     "parameters": self.adjust_schema(tool.inputSchema),
                 },
-            )
+            }
             for tool in response.tools
         ]
 
@@ -348,7 +350,6 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
             stream = await self._openai_client().chat.completions.create(**arguments)
             # Process the stream
             response = await self._process_stream(stream, self.default_request_params.model)
-
             # Track usage if response is valid and has usage data
             if (
                 hasattr(response, "usage")
@@ -392,6 +393,14 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
             # Convert to dict and remove None values
             message_dict = message.model_dump()
             message_dict = {k: v for k, v in message_dict.items() if v is not None}
+            if model_name in (
+                "deepseek-r1-distill-llama-70b",
+                "openai/gpt-oss-120b",
+                "openai/gpt-oss-20b",
+            ):
+                message_dict.pop("reasoning", None)
+                message_dict.pop("channel", None)
+
             messages.append(message_dict)
 
             message_text = message.content
