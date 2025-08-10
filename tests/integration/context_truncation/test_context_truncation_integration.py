@@ -25,8 +25,12 @@ class TestContextTruncationIntegration:
     async def test_anthropic_truncation_parameters_passed(self, app):
         """Test that Anthropic provider receives truncation parameters correctly."""
         
-        with patch('mcp_agent.llm.providers.augmented_llm_anthropic.AnthropicAugmentedLLM._anthropic_completion') as mock_completion:
-            mock_completion.return_value = [Mock()]
+        with patch('mcp_agent.llm.providers.augmented_llm_anthropic.AnthropicAugmentedLLM._execute_streaming_call') as mock_completion:
+            mock_response = Mock()
+            mock_response.content = [Mock(type="text", text="Test response")]
+            mock_response.stop_reason = "end_turn"
+            mock_response.usage = Mock(input_tokens=10, output_tokens=5)
+            mock_completion.return_value = mock_response
             
             with patch.object(ContextTruncation, 'truncate_if_required', new_callable=AsyncMock) as mock_truncate:
                 mock_truncate.return_value = []  # Return empty list to simulate truncation
@@ -34,12 +38,12 @@ class TestContextTruncationIntegration:
                 @app.agent(
                     name="anthropic_param_test",
                     instruction="Test truncation parameters",
-                    model="passthrough",  # Use passthrough to avoid real API calls
+                    model="haiku",  # Use Anthropic model to trigger Anthropic provider
                     request_params=RequestParams(
-                        maxTokens=100,
+                        maxTokens=5000,
                         use_history=True,
                         context_truncation_mode="remove",
-                        context_truncation_length_limit=500
+                        context_truncation_length_limit=5
                     )
                 )
                 async def test_agent():
@@ -55,7 +59,7 @@ class TestContextTruncationIntegration:
                 mock_truncate.assert_called()
                 call_args = mock_truncate.call_args
                 assert call_args[1]['truncation_mode'] == "remove"
-                assert call_args[1]['limit'] == 500
+                assert call_args[1]['limit'] == 5
     
     @pytest.mark.anyio
     async def test_openai_truncation_parameters_passed(self, app):
@@ -70,12 +74,12 @@ class TestContextTruncationIntegration:
                 @app.agent(
                     name="openai_param_test", 
                     instruction="Test truncation parameters",
-                    model="passthrough",
+                    model="gpt-4o",  # Use OpenAI model to trigger OpenAI provider
                     request_params=RequestParams(
-                        maxTokens=100,
+                        maxTokens=5000,
                         use_history=True,
                         context_truncation_mode="summarize",
-                        context_truncation_length_limit=1000
+                        context_truncation_length_limit=100
                     )
                 )
                 async def test_agent():
@@ -92,14 +96,18 @@ class TestContextTruncationIntegration:
                 mock_truncate.assert_called()
                 call_args = mock_truncate.call_args
                 assert call_args[1]['truncation_mode'] == "summarize"
-                assert call_args[1]['limit'] == 1000
+                assert call_args[1]['limit'] == 100
     
     @pytest.mark.anyio  
     async def test_google_truncation_parameters_passed(self, app):
         """Test that Google provider receives truncation parameters correctly."""
         
-        with patch('mcp_agent.llm.providers.augmented_llm_google_native.GoogleNativeAugmentedLLM._completion') as mock_completion:
-            mock_completion.return_value = Mock()
+        with patch('mcp_agent.llm.providers.augmented_llm_google_native.GoogleNativeAugmentedLLM._execute_api_call') as mock_api_call:
+            mock_response = Mock()
+            mock_response.text = "Test response"
+            mock_response.usage_metadata = Mock(prompt_token_count=10, candidates_token_count=5)
+            mock_response.candidates = [Mock(content=Mock(parts=[Mock(text="Test response")]))]
+            mock_api_call.return_value = mock_response
             
             with patch.object(ContextTruncation, 'truncate_if_required', new_callable=AsyncMock) as mock_truncate:
                 mock_truncate.return_value = []
@@ -107,12 +115,12 @@ class TestContextTruncationIntegration:
                 @app.agent(
                     name="google_param_test",
                     instruction="Test truncation parameters",
-                    model="passthrough",
+                    model="gemini-2.0-flash",  # Use Google model to trigger Google provider
                     request_params=RequestParams(
-                        maxTokens=100,
+                        maxTokens=5000,
                         use_history=True,
                         context_truncation_mode="remove", 
-                        context_truncation_length_limit=750
+                        context_truncation_length_limit=5
                     )
                 )
                 async def test_agent():
@@ -127,21 +135,25 @@ class TestContextTruncationIntegration:
                 mock_truncate.assert_called()
                 call_args = mock_truncate.call_args
                 assert call_args[1]['truncation_mode'] == "remove"
-                assert call_args[1]['limit'] == 750
+                assert call_args[1]['limit'] == 5
     
     @pytest.mark.anyio
     async def test_truncation_not_called_when_disabled(self, app):
         """Test that truncation is not called when no truncation mode is specified."""
         
-        with patch('mcp_agent.llm.providers.augmented_llm_anthropic.AnthropicAugmentedLLM._anthropic_completion') as mock_completion:
-            mock_completion.return_value = [Mock()]
+        with patch('mcp_agent.llm.providers.augmented_llm_anthropic.AnthropicAugmentedLLM._execute_streaming_call') as mock_completion:
+            mock_response = Mock()
+            mock_response.content = [Mock(type="text", text="Test response")]
+            mock_response.stop_reason = "end_turn"
+            mock_response.usage = Mock(input_tokens=10, output_tokens=5)
+            mock_completion.return_value = mock_response
             
             with patch.object(ContextTruncation, 'truncate_if_required', new_callable=AsyncMock) as mock_truncate:
                 
                 @app.agent(
                     name="no_truncation_test",
                     instruction="Test no truncation",
-                    model="passthrough",
+                    model="haiku",  # Use Anthropic model 
                     request_params=RequestParams(
                         maxTokens=100,
                         use_history=True,
@@ -173,7 +185,7 @@ class TestContextTruncationIntegration:
                 @app.agent(
                     name="defaults_test",
                     instruction="Test default params fallback", 
-                    model="passthrough",
+                    model="gpt-4o",  # Use OpenAI model
                     request_params=RequestParams(
                         maxTokens=100,
                         use_history=True,
@@ -207,8 +219,12 @@ class TestContextTruncationIntegration:
     async def test_various_truncation_configurations(self, app, mode, limit):
         """Test various truncation configurations work correctly."""
         
-        with patch('mcp_agent.llm.providers.augmented_llm_anthropic.AnthropicAugmentedLLM._anthropic_completion') as mock_completion:
-            mock_completion.return_value = [Mock()]
+        with patch('mcp_agent.llm.providers.augmented_llm_anthropic.AnthropicAugmentedLLM._execute_streaming_call') as mock_completion:
+            mock_response = Mock()
+            mock_response.content = [Mock(type="text", text="Test response")]
+            mock_response.stop_reason = "end_turn"
+            mock_response.usage = Mock(input_tokens=10, output_tokens=5)
+            mock_completion.return_value = mock_response
             
             with patch.object(ContextTruncation, 'truncate_if_required', new_callable=AsyncMock) as mock_truncate:
                 mock_truncate.return_value = []
@@ -216,7 +232,7 @@ class TestContextTruncationIntegration:
                 @app.agent(
                     name=f"config_test_{mode}_{limit}",
                     instruction="Test various configurations",
-                    model="passthrough",
+                    model="haiku",  # Use Anthropic model
                     request_params=RequestParams(
                         maxTokens=100,
                         use_history=True,

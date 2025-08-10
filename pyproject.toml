@@ -110,6 +110,7 @@ dev = [
     "pytest-cov>=6.1.1",
     "pytest-mock",
     "ipdb>=0.13.13",
+    "trio>=0.30.0",
 ]
 
 [project.scripts]
