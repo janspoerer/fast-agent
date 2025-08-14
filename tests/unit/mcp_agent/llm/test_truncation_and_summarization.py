@@ -54,7 +54,7 @@ class TestContextTruncation(unittest.IsolatedAsyncioTestCase):
         result = await ContextTruncation.truncate_if_required(
             messages=messages,
             truncation_mode=ContextTruncationMode.SUMMARIZE,
-            limit=5,
+            limit=1000,
             model_name="test-model",
             system_prompt="System prompt",
             provider=mock_provider
