@@ -66,6 +66,7 @@ class RequestParams(CreateMessageRequestParams):
     request_delay_seconds: Optional[float] = None
     """
     Optional delay in seconds between requests to prevent rate limiting.
+    """
 
     mcp_metadata: Dict[str, Any] | None = None
     """
