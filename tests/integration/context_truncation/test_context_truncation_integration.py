@@ -98,6 +98,7 @@ class TestContextTruncationIntegration:
                 assert call_args[1]['truncation_mode'] == "summarize"
                 assert call_args[1]['limit'] == 100
     
+    @pytest.mark.skip(reason="No access to API keys in the integration tests in the GitHub test runner.")
     @pytest.mark.anyio  
     async def test_google_truncation_parameters_passed(self, app):
         """Test that Google provider receives truncation parameters correctly."""
