@@ -585,6 +585,7 @@ async def get_enhanced_input(
             ("Ctrl+Y", "Copy"),
             ("Ctrl+L", "Clear"),
             ("↑/↓", "History"),
+            ("EXIT", "Exit")
         ]
 
         newline = "Ctrl+&lt;Enter&gt;:Submit" if in_multiline_mode else "&lt;Enter&gt;:Submit"

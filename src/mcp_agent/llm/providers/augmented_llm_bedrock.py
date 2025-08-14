@@ -86,6 +86,7 @@ class BedrockAugmentedLLM(AugmentedLLM[BedrockMessageParam, BedrockMessage]):
             r"^cohere\..*",  # Cohere models
             r"^ai21\..*",  # AI21 models
             r"^stability\..*",  # Stability AI models
+            r"^openai\..*",  # OpenAI models
         ]
 
         import re

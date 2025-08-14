@@ -25,6 +25,9 @@ class ProgressAction(str, Enum):
     FINISHED = "Finished"
     SHUTDOWN = "Shutdown"
     AGGREGATOR_INITIALIZED = "Running"
+    SERVER_OFFLINE = "Offline"
+    SERVER_RECONNECTING = "Reconnecting"
+    SERVER_ONLINE = "Online"
     FATAL_ERROR = "Error"
 
 

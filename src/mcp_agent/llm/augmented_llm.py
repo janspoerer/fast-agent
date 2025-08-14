@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from contextvars import ContextVar
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -64,6 +65,9 @@ if TYPE_CHECKING:
 
 # TODO -- move this to a constant
 HUMAN_INPUT_TOOL_NAME = "__human_input__"
+
+# Context variable for storing MCP metadata
+_mcp_metadata_var: ContextVar[Dict[str, Any] | None] = ContextVar('mcp_metadata', default=None)
 
 
 def deep_merge(dict1: Dict[Any, Any], dict2: Dict[Any, Any]) -> Dict[Any, Any]:
@@ -253,6 +257,11 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
 
         self._precall(multipart_messages)
 
+        # Store MCP metadata in context variable
+        final_request_params = self.get_request_params(request_params)
+        if final_request_params.mcp_metadata:
+            _mcp_metadata_var.set(final_request_params.mcp_metadata)
+
         assistant_response: PromptMessageMultipart = await self._apply_prompt_provider_specific(
             multipart_messages, request_params
         )
@@ -433,6 +442,12 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
             multipart_messages = PromptMessageMultipart.to_multipart(multipart_messages)
 
         self._precall(multipart_messages)
+        
+        # Store MCP metadata in context variable
+        final_request_params = self.get_request_params(request_params)
+        if final_request_params.mcp_metadata:
+            _mcp_metadata_var.set(final_request_params.mcp_metadata)
+            
         result, assistant_response = await self._apply_prompt_provider_specific_structured(
             multipart_messages, model, request_params
         )
